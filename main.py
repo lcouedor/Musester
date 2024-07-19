@@ -4,6 +4,7 @@ from spotipy.oauth2 import SpotifyOAuth
 import cred
 from pprint import pprint
 import os
+import re
 
 clear = lambda: os.system('clear')
 
@@ -29,14 +30,14 @@ seuils = {
 
     #Chill Work
     playlistName[1]: {'valenceMin': 0.0,
-                'valenceMax': 0.3,
+                'valenceMax': 0.4,
                 'danceabilityMin': 0.0,
                 'danceabilityMax': 1.0,
                 'energyMin': 0.0,
                 'energyMax': 0.5,
-                'acousticnessMin': 0.2,
+                'acousticnessMin': 0.15,
                 'acousticnessMax': 1.0,
-                'instrumentalnessMin': 0.5,
+                'instrumentalnessMin': 0.4,
                 'instrumentalnessMax': 1.0,
                 'tempoMin': 0,
                 'tempoMax': 200,
@@ -44,11 +45,11 @@ seuils = {
                 'speechinessMax': 0.1,},
       
     #Mid
-    playlistName[2]: {'valenceMin': 0.10,
+    playlistName[2]: {'valenceMin': 0.08,
                 'valenceMax': 0.9,
-                'danceabilityMin': 0.15,
+                'danceabilityMin': 0.12,
                 'danceabilityMax': 0.85,
-                'energyMin': 0.15,
+                'energyMin': 0.12,
                 'energyMax': 0.75,
                 'acousticnessMin': 0.0,
                 'acousticnessMax': 1.0,
@@ -57,14 +58,14 @@ seuils = {
                 'tempoMin': 60,
                 'tempoMax': 200,
                 'speechinessMin': 0.0,
-                'speechinessMax': 0.20,},
+                'speechinessMax': 0.22,},
     
     #Smile
-    playlistName[3]: {'valenceMin': 0.3,
+    playlistName[3]: {'valenceMin': 0.27,
                 'valenceMax': 1.0,
-                'danceabilityMin': 0.5,
+                'danceabilityMin': 0.45,
                 'danceabilityMax': 1.0,
-                'energyMin': 0.5,
+                'energyMin': 0.45,
                 'energyMax': 1.0,
                 'acousticnessMin': 0.0,
                 'acousticnessMax': 1.0,
@@ -73,36 +74,36 @@ seuils = {
                 'tempoMin': 60,
                 'tempoMax': 200,
                 'speechinessMin': 0.0,
-                'speechinessMax': 0.15,},
+                'speechinessMax': 0.17,},
 
     #Summer Vibe
-    playlistName[4]: {'valenceMin': 0.5,
+    playlistName[4]: {'valenceMin': 0.47,
                 'valenceMax': 1.0,
-                'danceabilityMin': 0.5,
+                'danceabilityMin': 0.47,
                 'danceabilityMax': 1.0,
-                'energyMin': 0.7,
+                'energyMin': 0.65,
                 'energyMax': 1.0,
                 'acousticnessMin': 0.0,
                 'acousticnessMax': 1.0,
                 'instrumentalnessMin': 0.0,
-                'instrumentalnessMax': 0.5,
+                'instrumentalnessMax': 0.52,
                 'tempoMin': 70,
                 'tempoMax': 200,
                 'speechinessMin': 0.0,
-                'speechinessMax': 0.15,}, 
+                'speechinessMax': 0.16,}, 
 
     #Motivation
     playlistName[5]: {'valenceMin': 0.0,
                 'valenceMax': 1.0,
                 'danceabilityMin': 0.2,
                 'danceabilityMax': 0.65,
-                'energyMin': 0.8,
+                'energyMin': 0.76,
                 'energyMax': 1.0,
                 'acousticnessMin': 0.0,
-                'acousticnessMax': 0.2,
+                'acousticnessMax': 0.22,
                 'instrumentalnessMin': 0.0,
-                'instrumentalnessMax': 0.3,
-                'tempoMin': 100,
+                'instrumentalnessMax': 0.33,
+                'tempoMin': 95,
                 'tempoMax': 200,
                 'speechinessMin': 0.1,
                 'speechinessMax': 1.0,},
@@ -110,9 +111,9 @@ seuils = {
     #Rap
     playlistName[6]: {'valenceMin': 0.0,
                 'valenceMax': 1.0,
-                'danceabilityMin': 0.25,
+                'danceabilityMin': 0.22,
                 'danceabilityMax': 1.0,
-                'energyMin': 0.5,
+                'energyMin': 0.4,
                 'energyMax': 1.0,
                 'acousticnessMin': 0.0,
                 'acousticnessMax': 1.0,
@@ -120,14 +121,17 @@ seuils = {
                 'instrumentalnessMax': 1.0,
                 'tempoMin': 70,
                 'tempoMax': 200,
-                'speechinessMin': 0.15,
+                'speechinessMin': 0.12,
                 'speechinessMax': 1.0,}
 
 }
 
 # ---------- FONCTIONS ----------
+def has_cyrillic(text):
+    return bool(re.search('[а-яА-Я]', text))
+
 # Définir les playlists auxquelles ajouter la piste
-def definePlaylist(audio_features, group_genre):
+def definePlaylist(audio_features, group_genre, title, artists):
     playlist_add = [] # liste des playlist auxquelles ajouter la piste
 
     # parcours de toutes les playlists possibles pour trouver lesquelles conviennent à la piste
@@ -149,11 +153,21 @@ def definePlaylist(audio_features, group_genre):
                 playlist_add[i] = f'Metal - {playlist_add[i]}'
             break
 
-    # Si l'un des genre du groupe est 'russian', on ajoute le mot 'russian' devant le nom de la playlist
+    # Si l'un des genre du groupe est 'russian' ou le titre contient au moins 1 caractère cyrillique, on ajoute le mot 'russian' devant le nom de la playlist
     for genre in group_genre:
         if 'russian' in genre.lower():
             for i in range(len(playlist_add)):
                 playlist_add[i] = f'Russian - {playlist_add[i]}'
+            break
+    if has_cyrillic(title):
+        for i in range(len(playlist_add)):
+            playlist_add[i] = f'Russian - {playlist_add[i]}'
+
+    # Si l'un des genres du groupe contient 'french', on ajoute le mot 'french' devant le nom de la playlist
+    for genre in group_genre:
+        if 'french' in genre.lower():
+            for i in range(len(playlist_add)):
+                playlist_add[i] = f'French - {playlist_add[i]}'
             break
 
     # Si l'un des genres du groupe est 'rap', on retire les playlists 'Summer Vibe' et 'Smile' s'ils existent
@@ -172,17 +186,25 @@ def definePlaylist(audio_features, group_genre):
         if playlistName[2] in playlist_add:
             playlist_add.remove(playlistName[2])
 
+    # Si le tableau des playlists contient 'Smile', on retire 'Mid' s'il existe
+    if playlistName[3] in playlist_add:
+        if playlistName[2] in playlist_add:
+            playlist_add.remove(playlistName[2])
+
     # Si le tableau des playlists contient 'Flow', on retire 'ChillWork' s'il existe
     if playlistName[0] in playlist_add:
         if playlistName[1] in playlist_add:
             playlist_add.remove(playlistName[1])
 
+    rapGender = False
     # Si aucun genre du groupe n'est 'rap', la playlist 'Rap' est retirée
     for genre in group_genre:
-        if 'rap' not in genre.lower():
-            if playlistName[6] in playlist_add:
-                playlist_add.remove(playlistName[6])
-                break
+        if 'rap' in genre.lower():
+            rapGender = True
+            break
+    if not rapGender:
+        if playlistName[6] in playlist_add:
+            playlist_add.remove(playlistName[6])
 
     # Ajout d'une playlist si aucune ne convient
     if len(playlist_add) == 0:
@@ -259,13 +281,14 @@ def main():
     # ---------- AUTHENTIFICATION ----------
     # Création de l'objet SpotifyOAuth pour obtenir les informations d'identification de l'utilisateur
     scope = "playlist-read-private playlist-modify-private playlist-modify-public"
-    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=cred.client_ID, client_secret= cred.client_SECRET, redirect_uri=cred.redirect_url, scope=scope))
+    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope, redirect_uri=cred.redirect_url, client_id=cred.client_ID, client_secret=cred.client_SECRET, username='leoco'))
 
     # Identifiant de la playlist dont vous voulez récupérer les musiques
-    playlist_id = '7Lh0UtRMrJmZDh8lDdMSIG'
+    playlist_id = '1PC7TvqAzm6jdFs6D2SSlM'
 
     # Récupération des informations de la playlist
     playlist = get_playlist_tracks(sp, sp.current_user()['id'], playlist_id)
+
 
     # ---------- FONCTIONS ----------
     nbTitres = len(playlist)
@@ -276,6 +299,8 @@ def main():
 
         #Récupération des informations de la piste
         track_id = track['track']['id']
+        title = track['track']['name']
+        artists = track['track']['artists']
         
         # Récupération des genres de tous les artistes de la piste
         group_genre = []
@@ -285,13 +310,13 @@ def main():
 
         audio_features = sp.audio_features(tracks=[track_id])
 
-        playlist_add = definePlaylist(audio_features, group_genre) # liste des playlist auxquelles ajouter la piste
+        playlist_add = definePlaylist(audio_features, group_genre, title, artists) # liste des playlist auxquelles ajouter la piste
 
         # Ajout de la piste aux playlist correspondantes
-        ajoutPlaylist(sp, track_id, playlist_add)
+        #ajoutPlaylist(sp, track_id, playlist_add)
         
         # Supprimer le titre traité de la playlist initiale
-        # sp.playlist_remove_all_occurrences_of_items(playlist_id, [track_id])
+        #sp.playlist_remove_all_occurrences_of_items(playlist_id, [track_id])
 
         # Affichage de la progression
         clear()

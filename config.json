@@ -1,0 +1,84 @@
+[
+    {
+        "name": "Rock",
+        "filters": {
+            "genre": {
+                "include": ["rock", "metal", "modern rock", "hard rock", "alternative metal", "alternative rock", "rap rock", "punk"]
+            },
+            "artists": {
+                "include": ["Billy Talent"]
+            },
+            "valence": {"min": 0.2, "max": 1},
+            "energy": {"min": 0.8, "max": 1},
+            "tempo": {"min": 130, "max": 300}
+        }
+    },
+
+    {
+        "name": "Chiller Pop/Rock",
+        "filters": {
+            "genre": {
+                "include": ["rock", "modern rock", "metal", "alternative rock", "alternative metal", "pop", "soft rock"],
+                "exclude": ["hard rock", "edm", "hip-hop/rap"]
+            },
+            "energy": {"min": 0.4, "max": 0.8}
+        }
+    },
+
+    {
+        "name": "Indie/Pop",
+        "filters": {
+            "genre": {
+                "include": ["indie pop", "pov: indie", "pop", "pop dance", "latin pop"],
+                "exclude": ["rap", "rock", "modern rock", "pop rap"]
+            }
+        }
+    },
+
+    {
+        "name": "Chillwork",
+        "filters": {
+            "energy": {"min": 0.0, "max": 0.35},
+            "speechiness": {"min": 0.0, "max": 0.3}
+        }
+    },
+
+    {
+        "name": "Recent released likes",
+        "filters": {
+            "likedDate": "5 days",
+            "releaseDate": {"min": 2020, "max": 2029}
+        }
+    },
+
+    {
+        "name": "Summer vibe",
+        "filters": {
+            "valence": {"min": 0.6, "max": 1},
+            "energy": {"min": 0.6, "max": 1},
+            "danceability": {"min": 0.6, "max": 1},
+            "genre": {
+                "exclude": ["rap", "pop rap"]
+            }
+        }
+    },
+
+    {
+        "name": "Rap",
+        "filters": {
+            "genre": {
+                "include": ["rap", "hip-hop/rap", "pop rap"]
+            },
+            "energy": {"min": 0.6, "max": 1},
+            "tempo": {"min": 100, "max": 300},
+            "speechiness": {"min": 0.3, "max": 1}
+        }
+    },
+
+    {
+        "name": "OG",
+        "filters": {
+            "releaseDate": {"min": 1900, "max": 1980}
+        }
+    }
+]
