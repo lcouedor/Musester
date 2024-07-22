@@ -1,3 +1,5 @@
+# Musester (Music sorter)
+
 # Objectif du projet
 Répartir les musiques d'une playlist spotify "source" dans d'autres playlists en fonction de divers attributs (genres des artistes, valence, energy) d'en le but d'en déduire un mood et un genre d'écoute
 
