@@ -1,101 +1,54 @@
 [
     {
-        "name": "Rock",
+        "name": "St - Rock",
         "filters": {
             "genre": {
-                "include": ["rock", "metal", "hard rock", "alternative metal", "alternative rock", "rap rock", "punk"],
-                "exclude": ["pop", "rap", "hip-hop/rap"]
+                "include": ["rock", "metal", "hard", "rap rock", "punk"],
+                "exclude": ["pop", "rap", "hip-hop/rap", "indie", "pov:"]
             },
-            "energy": {"min": 0.7, "max": 1},
-            "tempo": {"min": 110, "max": 300},
-            "valence": {"min": 0.2, "max": 0.8},
-            "instrumentalness": {"min": 0.0, "max": 0.5}
+            "criterias": ["energy +", "tempo +", "instrumentalness", "acousticness"]
         }
     },
 
     {
-        "name": "Indie/Chill Pop",
+        "name": "St - Chill",
         "filters": {
             "genre": {
-                "include": ["rock", "modern rock", "metal", "alternative rock", "alternative metal", "pop", "soft rock", "indie pop", "pov: indie", "pop dance", "latin pop", "electropop"],
-                "exclude": ["hard rock", "edm", "hip-hop/rap", "rap", "pop rap"]
+                "exclude": ["hard rock", "edm", "hip-hop/rap", "rap", "pop rap", "rock", "metal", "rap rock", "punk"]
             },
-            "energy": {"min": 0.3, "max": 0.8},
-            "valence": {"min": 0.0, "max": 0.8},
-            "tempo": {"min": 70, "max": 150},
-            "danceability": {"min": 0.3, "max": 0.88}
-        }
-    },    
-
-    {
-        "name": "Night chill",
-        "filters": {
-            "energy": {"min": 0.0, "max": 0.5},
-            "speechiness": {"min": 0.0, "max": 0.3},
-            "tempo": {"min": 0, "max": 140}
+            "criterias": ["energy", "tempo -", "acousticness +", "danceability -"]
         }
     },
 
     {
-        "name": "Summer vibe",
-        "filters": {
-            "valence": {"min": 0.38, "max": 1},
-            "energy": {"min": 0.6, "max": 1},
-            "danceability": {"min": 0.6, "max": 1},
-            "genre": {
-                "exclude": ["rap", "pop rap"]
-            }
-        }
-    },
-
-    {
-        "name": "Rap",
+        "name": "St - Indie/Chill Pop",
         "filters": {
             "genre": {
-                "include": ["rap", "hip-hop/rap", "pop rap"],
-                "exclude": ["rock", "metal", "hard rock", "alternative metal", "alternative rock", "modern rock"]
+                "include": ["indie", "pop", "dance", "latin", "electropop", "hip/hop"],
+                "exclude": ["hard", "edm", "rock", "rap", "pop rap", "punk", "metal"]
             },
-            "energy": {"min": 0.6, "max": 1},
-            "tempo": {"min": 100, "max": 300}
+            "criterias": ["energy", "speechiness -", "valence", "danceability +"]
         }
     },
 
     {
-        "name": "EDM",
+        "name": "St - Rap",
         "filters": {
             "genre": {
-                "include": ["edm", "electro house", "big room", "progressive house", "house", "pop dance", "dance", "electronic", "electropop"],
-                "exclude": ["rock", "metal", "hard rock", "alternative metal", "alternative rock", "modern rock", "rap", "hip-hop/rap", "pop rap"]
+                "include": ["rap", "hip-hop/rap", "pop rap", "rap rock", "trap", "hip-hop"],
+                "exclude": ["rock", "metal", "hard rock", "alternative metal", "alternative rock", "modern rock", "pop", "indie", "pov:", "punk", "latino"]
             },
-            "energy": {"min": 0.6, "max": 1},
-            "tempo": {"min": 100, "max": 300}
+            "criterias": ["energy +", "tempo +", "speechiness +"]
         }
     },
 
     {
-        "name": "Pop",
+        "name": "St - SummerVibe",
         "filters": {
             "genre": {
-                "include": ["pop", "pop dance", "pop rap", "latin pop", "electropop"],
-                "exclude": ["rock", "metal", "hard rock", "alternative metal", "alternative rock", "modern rock", "rap", "hip-hop/rap"]
+                "exclude": ["rock", "edm", "hip-hop/rap", "rap", "pop rap", "rap", "hard", "metal", "punk"]
             },
-            "energy": {"min": 0.6, "max": 1},
-            "tempo": {"min": 100, "max": 300}
-        }
-    },
-
-    {
-        "name": "✓ OG",
-        "filters": {
-            "releaseDate": {"min": 1900, "max": 1980}
-        }
-    },
-
-    {
-        "name": "✓ Recent released likes",
-        "filters": {
-            "likedDate": "5 days",
-            "releaseDate": {"min": 2020, "max": 2029}
+            "criterias": ["energy +", "valence +", "danceability +"]
         }
     }
 ]

@@ -1,6 +1,14 @@
 import json
 import os
 
+# Récupérer une playlist
+def get_playlist(sp, playlist_name):
+    playlists = sp.current_user_playlists()
+    for playlist in playlists['items']:
+        if playlist['name'] == playlist_name:
+            return playlist
+    return None
+
 # Récupérer les pistes d'une playlist
 def get_source_playlist_tracks(sp, username, playlist_id):
     results = sp.user_playlist_tracks(username,playlist_id)
@@ -11,76 +19,63 @@ def get_source_playlist_tracks(sp, username, playlist_id):
 
     return tracks
 
-# Supprimer des playlists les musiques qui ne sont plus dans la playlist source
-#TODO possible d'optimiser en faisant d'abord un set de toutes les musiques à retirer par playlist
-def clean_playlists(sp, playlist_tracks, source_playlist, playlistsNamesId):
-    for p in playlist_tracks:
-        for track in playlist_tracks[p]:
-            if track not in [track['track']['id'] for track in source_playlist]: #Si la musique n'est plus dans la playlist source
-                sp.playlist_remove_all_occurrences_of_items(p, [track])
+#Si l'id de la piste n'est pas dans la base de données, on récupère les audio_features de la piste pour les ajouter à la base de données
+#On retourne ensuite les audio_features des pistes passées en paramètre (celles d'une playlist)
+def get_audio_features(sp, tracks_ids, db):
+    songs_to_get = []
+    audio_features_to_return = []
+    for i in range(0, len(tracks_ids)):
+        if tracks_ids[i] not in db:
+            songs_to_get.append(tracks_ids[i])
+        else:
+            audio_features_to_return.append(db[tracks_ids[i]])
+    
+    #On récupère ensuite 100 par 100 les audio_features des pistes à récupérer et on les ajoute à la base de données
+    for i in range(0, len(songs_to_get), 100):
+        audio_features = sp.audio_features(songs_to_get[i:i+100])
+        for audio_feature in audio_features:
+            db[audio_feature['id']] = audio_feature
+            audio_features_to_return.append(audio_feature)
 
-# Récupération des caractéristiques audio des musiques de la playlist source (100 par 100 pour l'API Spotify)
-# Si les musiques ne sont pas déjà dans la bdd, on les ajoute
-# On retourne un tableau avec les caractéristiques audio des musiques de la playlist source (track_ids)
-def get_audio_features(sp, track_ids, data_songs):
-    audio_features = []
+    #On enregistre la base de données
+    save_database('data_songs', db)
 
-    audio_to_search = []
+    return audio_features_to_return
 
-    for i in range(0, len(track_ids)):
-        if track_ids[i] not in data_songs:
-            audio_to_search.append(track_ids[i])
-        else: 
-            audio_features.append(data_songs[track_ids[i]])
+def get_artists_genre(sp, artists_ids, db):
+    artists_to_get = []
+    for i in range(0, len(artists_ids)):
+        if artists_ids[i] not in db:
+            artists_to_get.append(artists_ids[i])
+    
+    #On récupère ensuite 50 par 50 les genres des artistes à récupérer et on les ajoute à la base de données
+    for i in range(0, len(artists_to_get), 50):
+        artists = sp.artists(artists_to_get[i:i+50])
+        for artist in artists['artists']:
+            db[artist['id']] = artist['genres']
 
-    #On récupère les caractéristiques audio des musiques (par 100)
-    for i in range(0, len(audio_to_search), 100):
-        audio_features += sp.audio_features(tracks=audio_to_search[i:i+100])
+    #On enregistre la base de données
+    save_database('data_artists', db)
 
-    #On ajoute les musiques à la bdd si elles n'y sont pas déjà
-    for track in audio_features:
-        if track['id'] not in data_songs:
-            data_songs[track['id']] = track
+def add_tracks(sp, playlist_id, tracks_ids):
+    for i in range(0, len(tracks_ids), 100):
+        sp.playlist_add_items(playlist_id, tracks_ids[i:i+100])
 
-    #On sauvegarde la bdd
-    save_database('data_songs', data_songs)
+def create_playlist(sp, playlist_name):
+    return sp.user_playlist_create(sp.current_user()['id'], playlist_name, public=False)
 
-    return audio_features
-
-#On tourne les genres des artistes passés en paramètre
-#Si un ou des artistes ne sont pas dans la bdd, on les ajoute
-#TODO possible d'optimiser en faisant d'abord un set de tous les artistes à rechercher
-def get_artists_genres(sp, artists_to_search, data_artists):
-    artists_genres = []
-    for artist in artists_to_search:
-        artist = artist['id']
-        if artist not in data_artists:
-            data_artists[artist] = sp.artist(artist)['genres']
-        artists_genres.append(data_artists[artist])
-
-    save_database('data_artists', data_artists)
-
-    return artists_genres
-
-# Pour ajouter toutes les musiques des playlists locales aux playlists spotify
-def addAllTracks(sp, local_playlist):
-    for playlist_id in local_playlist:
-        #Ajout 100 par 100 des musiques
-        for i in range(0, len(local_playlist[playlist_id]), 100):
-            sp.playlist_add_items(playlist_id, local_playlist[playlist_id][i:i+100])
-
+# On importe les noms de playlist et leurs seuils depuis config.json
 def configLoad():
-    # On importe les noms de playlist et leurs seuils depuis config.json
     with open('config.json', 'r') as f:
         return json.load(f)
 
+# Ouverture et enregistrement de la base de données
 def open_database(dbName): #Le fichier dbName ne contient pas l'extension .json
     if os.path.exists(f'{dbName}.json'):
         with open(f'{dbName}.json', 'r') as file:
             return json.load(file)
     else:
         return {}
-
 def save_database(dbName, db):
     with open(f'{dbName}.json', 'w') as file:
         json.dump(db, file, indent=4)

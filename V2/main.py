@@ -3,96 +3,125 @@ import os
 import time
 import cred
 import utils.auth as auth
-import utils.progress_bar as progress_bar
 import utils.spotify_utils as spotify_utils
 import utils.playlist_manager as playlist_manager
+import utils.progress_bar as progress_bar
 
 clear = lambda: os.system('clear')
 
 # ---------- VARIABLES ----------
-config = spotify_utils.configLoad() #Chargement de la config des playlists
+local_playlists = spotify_utils.configLoad() #Chargement de la config des playlists
+artists_genre_db = [] #Bdd perso des artistes
+songs_data_db = [] #Bdd perso des audio_features des musiques
 
-data_artists = spotify_utils.open_database('data_artists') #Bdd perso des artistes
-data_songs = spotify_utils.open_database('data_songs') #Bdd perso des musiques
+music_add = {}
 
-user_playlists = [] #Liste des playlists de l'utilisateur
-playlist_tracks = {} #Dictionnaire des noms de playlists avec leur liste de musiques
-local_playlist = {} #Dictionnaire des noms de playlists avec leur liste de musiques (pour les ajouts)
-playlistsNamesId = {} #Dictionnaire des noms de playlists avec leur id
 start = time.time()
 
 def timeInSecSince():
     return str(int(time.time() - start)) + "s"
 
 def main():
-    clear() #Retirer le warning ssl
+    #Retirer le warning ssl
+    clear()
 
-    sp = auth.get_spotify_client() #Connexion à l'API Spotify
+    #Ouverture des bases de données
+    print("Ouverture des bases de données..." + timeInSecSince())
+    songs_data_db = spotify_utils.open_database('data_songs')
+    artists_genre_db = spotify_utils.open_database('data_artists')
 
-    playlist_id = cred.playlist_id # Identifiant de la playlist dont on veut récupérer les musiques
+    #Connexion à l'API Spotify
+    print("Connexion à l'API Spotify..." + timeInSecSince())
+    sp = auth.get_spotify_client()
 
-    # Récupération des musiques de la playlist source
+    #On récupère les playlists sur spotify au nom des playlists locales
+    print("Récupération des playlists Spotify depuis la configuration fournie et définition des critères..." + timeInSecSince())
+    for playlist in local_playlists:
+        moyennes = {}
+
+        #On récupère l'id de la playlist spotify
+        playlist_sp = spotify_utils.get_playlist(sp, playlist["name"])
+        if playlist_sp is None:
+            print(f"La playlist {playlist['name']} n'existe pas sur Spotify")
+            continue
+
+        #On récupère les pistes de la playlist spotify
+        playlist_tracks = spotify_utils.get_source_playlist_tracks(sp, sp.current_user()['id'], playlist_sp['id'])
+
+        #Si la playlist a moins de 5 pistes ce n'est pas suffisant pour faire une comparaison
+        if len(playlist_tracks) < 5:
+            print(f"La playlist {playlist['name']} a moins de 5 pistes")
+            continue
+
+        #TODO retirer des playlists les musiques qui ne sont plus dans la playlist source
+
+        #On va chercher les audio_features des pistes de la playlist spotify
+        audio_features = spotify_utils.get_audio_features(sp, [track['track']['id'] for track in playlist_tracks], songs_data_db)
+
+        #On ouvre à nouveau la bdd si jamais on a ajouté des audio_features
+        songs_data_db = spotify_utils.open_database('data_songs')
+
+        #Pour chaque critère de la playlist locale, on récupère la médiane et l'écart type des valeurs de la playlist spotify
+        for criteria in playlist["filters"]["criterias"]:
+            values = []
+            crit = criteria.split(" ")[0]
+            for track in audio_features:
+                values.append(track[crit])
+            moyennes[crit] = sum(values) / len(values)
+
+        #On ajoute les valeurs de médiane et d'écart type à la playlist locale
+        playlist["filters"]["moyennes"] = moyennes
+
+        #On ajoute aussi les id des pistes de la playlist spotify
+        playlist["exsisting_tracks"] = [track['track']['id'] for track in playlist_tracks]
+
+    #On récupère les musiques d'une playlist de référence
     print("Récupération des musiques de la playlist source..." + timeInSecSince())
-    source_playlist = spotify_utils.get_source_playlist_tracks(sp, sp.current_user()['id'], playlist_id)
+    source_playlist = spotify_utils.get_source_playlist_tracks(sp, sp.current_user()['id'], cred.playlist_id)
 
-    #On affiche dans la console tous les titres de musiques (titre - artistes) de la playlist source
-    #print("Musiques de la playlist source :")
-    #for track in source_playlist:
-        #print(track['track']['name'] + " - " + ', '.join([artist['name'] for artist in track['track']['artists']]))
+    #On remplis la bdd des artistes avec ceux qui n'y sont pas déjà
+    print("Récupération des genres des artistes..." + timeInSecSince())
+    spotify_utils.get_artists_genre(sp, [track['track']['artists'][0]['id'] for track in source_playlist], artists_genre_db)
+    #On ouvre à nouveau la bdd si jamais on a ajouté des genres
+    artists_genre_db = spotify_utils.open_database('data_artists')
 
-    # Préparation des playlists, récupération des musiques déjà présentes dans les playlists et ajout des playlists locales
-    print("Préparation des playlists..." + timeInSecSince())
-    playlist_manager.preparePlaylists(sp, config, playlist_tracks, playlistsNamesId, local_playlist)
-    
-    # Supprimer des playlists les musiques qui ne sont plus dans la playlist source
-    print("Nettoyage des playlists..." + timeInSecSince())
-    spotify_utils.clean_playlists(sp, playlist_tracks, source_playlist, playlistsNamesId)
+    #On va chercher les audio_features des pistes de la playlist de référence
+    print("Récupération des audio_features des musiques de la playlist source..." + timeInSecSince())
+    audio_features = spotify_utils.get_audio_features(sp, [track['track']['id'] for track in source_playlist], songs_data_db)
 
-    # Récupération des caractéristiques audio des musiques de la playlist source (100 par 100 pour l'API Spotify) et ajout dans la bdd
-    print("Récupérations des informations des musiques..." + timeInSecSince())
-    track_ids = [track['track']['id'] for track in source_playlist]
-    audio_features = spotify_utils.get_audio_features(sp, track_ids, data_songs)
-
-    nbTitres = len(audio_features)
     currentTitre = 0
 
     print("Classification des musiques..." + timeInSecSince())
-    # Parcours de toutes les pistes de la playlist
-    for i in range(nbTitres):
+    for i in range(len(audio_features)):
         track = audio_features[i]
-        #J'ajoute à track la date d'ajout de la musique à la playlist source
-        track['likedDate'] = source_playlist[i]['added_at']
-        #J'ajoute à track la date de sortie de l'album (si elle n'est pas renseignée, je mets 2021-01-01)
-        track['releaseDate'] = sp.track(track_ids[i])['album']['release_date']
-        if track['releaseDate'] == "":
-            track['releaseDate'] = "2021-01-01"
 
-        #Récupération des genres des artistes de la musique
-        artists = source_playlist[i]['track']['artists']
-        artists_genres = spotify_utils.get_artists_genres(sp, source_playlist[i]['track']['artists'], data_artists)
-        
-        #Récupération des noms de playlists auxquelles ajouter la musique
-        playlist_add = playlist_manager.definePlaylist(track, artists, artists_genres, config, data_artists)
+        artists_genres = playlist_manager.format_artists_genre(source_playlist[i], artists_genre_db)
 
-        #Préparation des playlists
-        playlist_manager.fillLocalPlaylists(track, playlist_add, local_playlist, playlistsNamesId)
+        #On définit les playlists où la musique peut être ajoutée
+        playlist_add = playlist_manager.definePlaylist(track, artists_genres, local_playlists, songs_data_db)
+
+        for playlist in playlist_add:
+            if playlist not in music_add:
+                music_add[playlist] = []
+            music_add[playlist].append(source_playlist[i]['track']['uri'])
 
         # Affichage de la progression
-        progress_bar.printProgressBar(currentTitre, nbTitres, prefix = 'Progression :', suffix = 'Complete', length = 50)
+        progress_bar.printProgressBar(currentTitre, len(audio_features), prefix = 'Progression :', suffix = 'Complete', length = 50)
 
         currentTitre += 1
 
-    print("Nettoyage des musiques déjà ajoutées..." + timeInSecSince())
-    playlist_manager.cleanAlreadyAdded(local_playlist, playlist_tracks)
+    print("Ajout des musiques..." + timeInSecSince())
+    for playlist in music_add:
+        playlist_sp = spotify_utils.get_playlist(sp, playlist)
+        if playlist_sp is None:
+            #Je crée la playlist si elle n'existe pas
+            playlist_sp = spotify_utils.create_playlist(sp, playlist)
 
-    print("Ajout des musiques aux playlists..." + timeInSecSince())
-    spotify_utils.addAllTracks(sp, local_playlist)
+        spotify_utils.add_tracks(sp, playlist_sp['id'], music_add[playlist])
 
-    progress_bar.printProgressBar(nbTitres, nbTitres, prefix = 'Progression :', suffix = 'Complete', length = 50)
+    progress_bar.printProgressBar(currentTitre, currentTitre, prefix = 'Progression :', suffix = 'Complete', length = 50)
 
-    #On affiche le temps d'exécution (en minutes et secondes)
     excluded_time = time.time() - start
-    print("Fin du programme")
     print("Temps d'exécution : " + str(int(excluded_time // 60)) + "m" + str(int(excluded_time % 60)))
 
 if __name__ == "__main__":

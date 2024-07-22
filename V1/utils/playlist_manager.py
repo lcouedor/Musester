@@ -43,7 +43,7 @@ def definePlaylist(track, artists, artists_genres, config, data_artists):
         filters = playlist['filters']
 
         include_artists = False
-        if 'artists' in filters:
+        if 'artists' in filters: #Si il y a des artistes à inclure ou exclure
             include_artists = any(artist['name'] in filters['artists'].get('include', []) for artist in artists)
             if any(artist['name'] in filters['artists'].get('exclude', []) for artist in artists):
                 continue
