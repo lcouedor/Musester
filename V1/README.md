@@ -70,5 +70,7 @@ Il doit contenir quatre variables :
 - `client_SECRET`
 - `redirect_url`
 - `playlist_id`
+- `username`
 
 Pour les 2 premières valeurs, créer un projet sur le site développeur Spotify : `https://developer.spotify.com/`
+Pour la dernière, il faut ajouter un user dans 'User Management' sur la page du projet dans le dashboard de l'API spotify
