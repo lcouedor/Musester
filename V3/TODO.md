@@ -1,0 +1,4 @@
+- Récupérer des musiques depuis une playlist source
+- Créer une bdd
+- Mettre les musiques dans la bdd
+- faire la matrice de corrélation
