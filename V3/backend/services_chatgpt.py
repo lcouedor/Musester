@@ -13,9 +13,11 @@ def getSongAutomaticTags(song_name, artists):
     preprompt += "Tu reçois un titre de musique, et le(s) artiste(s) associé(s)"
     preprompt += "Tu me donne les tags que tu attribuerais à la musique"
     preprompt += "Les tags actuellement disponibles sont : " + tags
-    preprompt += "Tu peux en ajouter un nouveau si besoin"
-    preprompt += "Chaque musique a entre 2 et 10 tags"
-    preprompt += "Un tag peut être plusieurs choses : genre de la musique, nationalité, mood, émotion, ..."
+    preprompt += "Tu peux en ajouter un nouveau si besoin, obligatoirement en anglais"
+    preprompt += "Ne donne pas de tag trop spécifique, le but est de pouvoir grouper les musiques"
+    preprompt += "Ne donne pas de tag trop peu connu, je dois être capable de les reconnaître"
+    preprompt += "Chaque musique a entre 2 et 6 tags, choisis uniquement les plus représentatifs de la musique"
+    preprompt += "Un tag peut être plusieurs choses : genre de la musique, nationalité, mood, émotion, période temporelle,..."
     preprompt += "Si tu ne connais pas la musique, réponds uniquement 'unknown'"
     preprompt += "réponds uniquement par la liste des tags séparés par des tirets"
 
@@ -23,7 +25,7 @@ def getSongAutomaticTags(song_name, artists):
     prompt += "\nArtiste(s) : " + artists
   
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-3.5-turbo-1106",
         messages=[
             {"role": "system", "content": preprompt},
             {"role": "user", "content": prompt},

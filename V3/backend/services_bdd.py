@@ -106,7 +106,7 @@ def getSongById(id):
 #Add a song
 def addSong(song):
     response = supabase.table("songs").insert([song]).execute()
-    return jsonify(response.data)
+    return response.data
 
 def removeSong(id):
     response = supabase.table("songs").delete().eq("id", id).execute()
@@ -176,3 +176,26 @@ def getAllTagsId(including_tags, excluding_tags, or_tags):
 def isPlaylistSongInDb(spotify_id):
     response = supabase.table("songs").select("*").filter("song_spotify_id", "eq", spotify_id).execute()
     return len(response.data) > 0
+
+def getTagIdByNameForSpotify(name):
+    response = supabase.table("tags").select("*").eq("tag_name", name).execute()
+
+    if len(response.data) == 0:
+        return {"error": "Tag not found"}
+
+    return {"tag_id": response.data[0]['id']}
+
+def get_or_create_tag(tag_name):
+    try:
+        # Insère le tag
+        response = supabase.table("tags").insert({"tag_name": tag_name.lower()}).execute()
+
+        # Retourne l'ID si l'insertion réussit
+        return response.data[0]["id"]
+    except Exception as e:
+        # Si une erreur survient (comme une violation d'unicité), récupère l'ID existant
+        response = supabase.table("tags").select("*").eq("tag_name", tag_name.lower()).execute()
+        if response.data:
+            return response.data[0]["id"]
+        else:
+            raise Exception("Unexpected error while handling tags")

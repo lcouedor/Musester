@@ -2,12 +2,13 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 from cred import client_ID, client_SECRET, username, redirect_url
-from services_bdd import addSong, removeSong, getAllSongsService, getTagIdByName, addTagService, isPlaylistSongInDb
+from services_bdd import addSong, removeSong, getAllSongsService, addTagService, isPlaylistSongInDb, getTagIdByNameForSpotify, get_or_create_tag
 from services_chatgpt import getSongAutomaticTags
 
 from config import playlistPrefix
 
 from pprint import pprint
+import concurrent.futures
 
 def get_spotify_client():
     scope = "playlist-read-private playlist-modify-private playlist-modify-public"
@@ -47,35 +48,35 @@ def syncService(sourcePlaylistId):
     #Je récupère toutes les pistes de la base de données
     allSongsInDb = getAllSongsService()
 
-    idx = 0
+    # Créer un ThreadPoolExecutor pour paralléliser le traitement des chansons
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = []
+        for song in playlist_tracks:
+            # Ajouter chaque chanson à la file d'exécution parallèle
+            futures.append(executor.submit(addSongLogic, song))
 
-    # Je compare les pistes de la playlist source avec celles de la base de données
-    for song in playlist_tracks:
-        print(f"{idx}/{len(playlist_tracks)}")
-        idx += 1
-        
-        #Si la piste n'est pas dans la base de données, je l'ajoute
-        if not isPlaylistSongInDb(song['song_spotify_id']):
-            #Je récupère les tags de la piste
-            song_tags = getSongAutomaticTags(song['song_name'], song['song_artists'])
-
-            #Pour chaque tag, si il existe, je récupère son id, sinon je le crée
-            song_tags_ids = []
-            for tag in song_tags:
-                tag_id = getTagIdByName(tag).json
-                if 'error' in tag_id:
-                    tag_id = addTagService(tag)
-                    tag_id = tag_id[0]['id']
-                else: 
-                    tag_id = tag_id['tag_id']
-
-                song_tags_ids.append(tag_id)
-
-            #J'ajoute à song les ids des tags
-            song['tag_ids'] = song_tags_ids
-            addSong(song)            
+        # Attendre que toutes les tâches parallèles soient terminées
+        for future in concurrent.futures.as_completed(futures):
+            future.result()  # Nous pouvons récupérer le résultat si nécessaire, sinon on laisse les exceptions remonter
 
     return {"success": "Synchronization successful"}
+
+def addSongLogic(song):
+    #Si la piste n'est pas dans la base de données, je l'ajoute
+    if not isPlaylistSongInDb(song['song_spotify_id']):
+        #Je récupère les tags de la piste
+        song_tags = getSongAutomaticTags(song['song_name'], song['song_artists'])
+
+        #Pour chaque tag, si il existe, je récupère son id, sinon je le crée
+        song_tags_ids = []
+        for tag in song_tags:
+            tag_id = get_or_create_tag(tag)
+
+            song_tags_ids.append(tag_id)
+
+        #J'ajoute à song les ids des tags
+        song['tag_ids'] = song_tags_ids
+        addSong(song)
 
 def createThemePlaylist(songs: list, playlist_name: str):
     spotify_ids = [song['song_spotify_id'] for song in songs]
@@ -90,3 +91,4 @@ def createThemePlaylist(songs: list, playlist_name: str):
         spotify.playlist_add_items(playlist['id'], spotify_ids[i:i+100])
 
     return {"error": "Not implemented yet"}
+

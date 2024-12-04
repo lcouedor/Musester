@@ -6,5 +6,3 @@ client_SECRET: str = ''
 username: str = ''
 redirect_url: str = ''
 
-chatGptKey: str = ''
-
