@@ -1,8 +1,11 @@
-from cred import chatGptKey
 from openai import OpenAI
 from services_bdd import getAllTagsNames
+from utils import getSecret
+from dotenv import load_dotenv
 
-client = OpenAI(api_key=chatGptKey)
+load_dotenv()
+
+client = OpenAI(api_key=getSecret('GPT_KEY'))
 
 def getSongAutomaticTags(song_name, artists):
     tags = getAllTagsNames()

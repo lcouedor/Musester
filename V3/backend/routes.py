@@ -1,11 +1,7 @@
 from flask import Blueprint, jsonify, request
 from services_bdd import getAllSongsService, patchSongService, getSongsByTagsService, getAllTagsService, addTagService
 from services_spotify import syncService, createThemePlaylist
-from supabase import create_client, Client
-from cred import url, key
 from config import sourcePlaylistId
-
-supabase: Client = create_client(url, key)
 
 routes = Blueprint('routes', __name__)
 

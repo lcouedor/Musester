@@ -1,8 +1,11 @@
 from flask import jsonify
 from supabase import create_client, Client
-from cred import url, key
+from utils import getSecret
+from dotenv import load_dotenv
 
-supabase: Client = create_client(url, key)
+load_dotenv()
+
+supabase: Client = create_client(getSecret('SUPABASE_URL'), getSecret('SUPABASE_KEY'))
 
 def getAllSongsService():
     response = supabase.table("songs").select("*").execute()

@@ -1,7 +1,6 @@
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-from cred import client_ID, client_SECRET, username, redirect_url
 from services_bdd import addSong, removeSong, getAllSongsService, addTagService, isPlaylistSongInDb, getTagIdByNameForSpotify, get_or_create_tag
 from services_chatgpt import getSongAutomaticTags
 
@@ -10,9 +9,15 @@ from config import playlistPrefix
 from pprint import pprint
 import concurrent.futures
 
+from utils import getSecret
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 def get_spotify_client():
     scope = "playlist-read-private playlist-modify-private playlist-modify-public"
-    return spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope, redirect_uri=redirect_url, client_id=client_ID, client_secret=client_SECRET, username=username))
+    return spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope, redirect_uri=getSecret('SPOTIFY_REDIRECT'), client_id=getSecret('SPOTIFY_ID'), client_secret=getSecret('SPOTIFY_SECRET'), username=getSecret('SPOTIFY_USERNAME')))
 
 def get_playlist_tracks(sp, playlist_id):
     results = sp.playlist_tracks(playlist_id)

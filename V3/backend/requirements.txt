@@ -3,3 +3,4 @@ Flask-Cors==5.0.0
 supabase==2.10.0
 spotipy==2.24.0
 openai==1.56.2
+python-dotenv==1.0.1
