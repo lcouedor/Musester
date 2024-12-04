@@ -1,1 +1,5 @@
-*/cred.py
+*cred.py
+*myenv/
+*.env
+__pycache__/
+*.pyc
