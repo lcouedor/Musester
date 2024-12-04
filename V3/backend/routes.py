@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from services_bdd import getAllSongsService, patchSongService, getSongsByTagsService, getAllTagsService, addTagService
 from services_spotify import syncService, createThemePlaylist
 from config import sourcePlaylistId
+import asyncio
 
 routes = Blueprint('routes', __name__)
 
@@ -42,4 +43,5 @@ def createPlaylistBySongsTags():
 #Synchronize the database with the Spotify source playlist
 @routes.route('/sync', methods=['GET'])
 def sync():
-    return jsonify(syncService(sourcePlaylistId))
+    
+    return jsonify(asyncio.run(syncService(sourcePlaylistId)))
