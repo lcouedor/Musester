@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "https://musester.onrender.com"}})
 
 # Routes
 @app.route('/')
