@@ -6,14 +6,13 @@ from services_chatgpt import getSongAutomaticTags
 
 from config import playlistPrefix
 
-from pprint import pprint
-import concurrent.futures
-
 from utils import getSecret
 from dotenv import load_dotenv
 
 load_dotenv()
 
+from pprint import pprint
+import concurrent.futures
 
 def get_spotify_client():
     scope = "playlist-read-private playlist-modify-private playlist-modify-public"
@@ -50,8 +49,6 @@ def syncService(sourcePlaylistId):
 
     #Je récupère les pistes de la playlist source
     playlist_tracks = get_playlist_tracks(spotify, sourcePlaylistId)
-    #Je récupère toutes les pistes de la base de données
-    allSongsInDb = getAllSongsService()
 
     # Créer un ThreadPoolExecutor pour paralléliser le traitement des chansons
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -70,7 +67,9 @@ def addSongLogic(song):
     #Si la piste n'est pas dans la base de données, je l'ajoute
     if not isPlaylistSongInDb(song['song_spotify_id']):
         #Je récupère les tags de la piste
-        song_tags = getSongAutomaticTags(song['song_name'], song['song_artists'])
+        #TODO je retire juste pour les tests pour économiser des requêtes
+        # song_tags = getSongAutomaticTags(song['song_name'], song['song_artists'])
+        song_tags = []
 
         #Pour chaque tag, si il existe, je récupère son id, sinon je le crée
         song_tags_ids = []

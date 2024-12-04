@@ -111,6 +111,10 @@ def addSong(song):
     response = supabase.table("songs").insert([song]).execute()
     return response.data
 
+def addSongsBatch(songs):
+    response = supabase.table("songs").insert(songs).execute()
+    return response.data
+
 def removeSong(id):
     response = supabase.table("songs").delete().eq("id", id).execute()
     return jsonify(response.data)
