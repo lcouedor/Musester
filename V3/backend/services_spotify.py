@@ -116,6 +116,7 @@ async def syncService(sourcePlaylistId):
             if j >= len(song_tags):
                 continue
             for tag in song_tags[j]:
+                #TODO faire un appel à getTagIdByNameForSpotify avec tous les tags en même temps
                 if not tag:
                     continue
                 tag_id = getTagIdByNameForSpotify(tag)  # Appel asynchrone

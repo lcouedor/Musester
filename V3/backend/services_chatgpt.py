@@ -16,11 +16,12 @@ def getSongAutomaticTagsBatch(batch):
     preprompt = "You are a music tagging assistant. Your task is to determine relevant tags for a song based on its title and artists."
     preprompt += "Here are the rules you must follow:"
     preprompt += "1. If you don't know the song, respond only with 'unknown' and nothing else on the row, but you should know most of the songs."
-    preprompt += "2. If you feel like multiple tags fill the same role, add them all."
-    preprompt += "3. Unless you don't know the song, you must provide several tags, 5 at the minimum least, but the more the better (until tags became irrelevant for the song)."
-    preprompt += "4. Each song should have his individual tags"
-    preprompt += "5. Only use tags from the provided list of pre-existing tags. Do not invent any new tags."
-    preprompt += "6. Respond only with a list of tags, each separated by a vertical bar |. Do not add any explanations or additional text."
+    preprompt += "2. If you feel like multiple tags fill the same role, add them all. Don’t hold back."
+    preprompt += "3. Unless you don't know the song, you must provide **as many tags as possible**. Continue until you have covered all relevant dimensions of the song. Think about the song’s genre, origin, mood, tempo, themes, and any other attributes that could apply."
+    preprompt += "4. Include at least one tag from every significant dimension of the song (genre, mood, tempo, language, ambiance, period, etc.), unless you feel it’s irrelevant or no tag is available to describe the point."
+    preprompt += "5. Each song should have his individual tags"
+    preprompt += "6. Only available tags are those from the provided list. If no tag is present for a specific dimension, either take the closest one if existent or leave it blank. (Ideally, each song should have at least 6 tags)"
+    preprompt += "7. Respond only with a list of tags, each separated by a vertical bar |. Do not add any explanations or additional text."
     preprompt += "Input format: Multiple songs at once, for each song:"
     preprompt += "- Song title: <song_title>"
     preprompt += "- Artists: <artist_names>"
@@ -61,6 +62,8 @@ def getSongAutomaticTagsBatch(batch):
 
 
     result = response.choices[0].message.content
+
+    print(result)
 
 
     #Je découpe les réponses pour chaque chanson

@@ -129,7 +129,7 @@ def getSongsByTagsService(request, type_request=True):
     songsOr = []
     songsExcluded = []
     finalSongs = []
-    query = supabase.table("songs").select("*")
+    # query = supabase.table("songs").select("*")
 
     if including_tags_id:
         query = supabase.table("songs").select("*").filter("tag_ids", "cs", f"{{{' ,'.join(map(str, including_tags_id))}}}")
@@ -145,22 +145,29 @@ def getSongsByTagsService(request, type_request=True):
 
     #Je fais un tableau des musiques exclues
     if excluding_tags_id:
-        query = supabase.table("songs").select("*").filter("tag_ids", "cs", f"{{{' ,'.join(map(str, excluding_tags_id))}}}")
-        response = query.execute()
-        songsExcluded = response.data
-
+        for tag_id in excluding_tags_id:
+            query = supabase.table("songs").select("*").filter("tag_ids", "cs", f"{{{tag_id}}}")
+            response = query.execute()
+            songsExcluded += response.data
     if not songsOr: 
         songsOr = songsIncluded
 
     for song in songsIncluded:
-        if song in songsOr and song not in songsExcluded:
-            if not song in finalSongs:
-                finalSongs.append(song)
+        if song in songsOr and song not in songsExcluded and song not in finalSongs:
+            finalSongs.append(song)
+    #Je rajoute les chansons qui ont un des tags de or_tags
     if not songsIncluded:
         for song in songsOr:
             if song not in songsExcluded and song not in finalSongs:
                 finalSongs.append(song)
 
+    
+
+    #Pour chaque chanson, je remplace les tag_ids par les tag_names
+    for song in finalSongs:
+        tag_names = []
+        song['tag_names'] = getTagNamesByIds(song['tag_ids'])
+        del song['tag_ids']
 
     return finalSongs
 
@@ -201,6 +208,8 @@ def removeSong(id):
     response = supabase.table("songs").delete().eq("id", id).execute()
     return jsonify(response.data)
 
+#TODO récupérer une liste de tags d'un coup
+#TODO ne garde qu'une seule fonction entre celle là et getTagIdByNameForSpotify et changer la valeur de retour
 #Get a tag id by its name
 def getTagIdByName(name):
     response = supabase.table("tags").select("*").eq("tag_name", name).execute()

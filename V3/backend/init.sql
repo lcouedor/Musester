@@ -65,4 +65,8 @@ INSERT INTO "public"."tags" ("id", "tag_name") VALUES
 (50, '2000s'), 
 (51, '2010s'), 
 (52, '2020s'), 
-(53, 'vintage'); 
+(53, 'vintage'),
+
+-- Les tempos
+(54, 'slow-paced'), 
+(55, 'fast-paced');
