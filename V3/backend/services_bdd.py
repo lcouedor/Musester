@@ -45,10 +45,15 @@ def patchSongService(id, song):
     response = supabase.table("songs").update([existingSong]).eq("id", id).execute()
     return response.data
 
-def getSongsByTagsService(request):
-    including_tags = request.json.get('including_tags')  # Tous les tags doivent être présents
-    excluding_tags = request.json.get('excluding_tags')  # Aucun des tags ne doit être présent
-    or_tags = request.json.get('or_tags')  # Au moins un des tags doit être présent
+def getSongsByTagsService(request, type_request=True):
+    if type_request:
+        including_tags = request.json.get('including_tags')  # Tous les tags doivent être présents
+        excluding_tags = request.json.get('excluding_tags')  # Aucun des tags ne doit être présent
+        or_tags = request.json.get('or_tags')  # Au moins un des tags doit être présent
+    else:
+        including_tags = request['including_tags']  # Tous les tags doivent être présents
+        excluding_tags = request['excluding_tags']  # Aucun des tags ne doit être présent
+        or_tags = request['or_tags']  # Au moins un des tags doit être présent
 
     # Récupérer les id des tags
     including_tags_id, excluding_tags_id, or_tags_id = getAllTagsId(including_tags, excluding_tags, or_tags)
