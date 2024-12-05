@@ -20,12 +20,21 @@ def getAllSongs(page):
     return jsonify(getAllSongsService(page))
 
 #Get songs by filters
-@routes.route('/songs', methods=['GET'])
+@routes.route('/filteredSongs', methods=['GET'])
 def getSongsByFilters():
-    name = request.json['name']
-    artist = request.json['artist']
-    tags = request.json['tags']
-    return jsonify(searchSongsByFilters)
+    name = ''
+    artist = ''
+    tags = []
+
+    if('name' in request.json):
+        name = request.json['name']
+
+    if('artists' in request.json):
+        artist = request.json['artists']
+
+    if('tags' in request.json):
+        tags = request.json['tags']
+    return jsonify(searchSongsByFilters(name, artist, tags))
 
 #Get all tags
 @routes.route('/tags', methods=['GET'])
@@ -44,7 +53,7 @@ def addTag(name):
     return jsonify(addTagService(name))
 
 #Get songs with matching tags
-@routes.route('/filtered_songs', methods=['GET'])
+@routes.route('/songsByTags', methods=['GET'])
 def createPlaylistBySongsTags():
     result = getSongsByTagsService(request)
     return jsonify(result)

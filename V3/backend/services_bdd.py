@@ -5,11 +5,11 @@ from dotenv import load_dotenv
 import time
 from pprint import pprint
 
+import time
+
 load_dotenv()
 
 supabase: Client = create_client(getSecret('SUPABASE_URL'), getSecret('SUPABASE_KEY'))
-
-# BASE_URL = "http://127.0.0.1:5000/songs"  # Remplacez par l'URL de votre application si différente
 
 def getTotalSongsCount():
     response = supabase.table("songs").select("id", count="exact").execute()
@@ -30,27 +30,20 @@ def getAllSongsService(page):
     start = (page-1) * page_size
     end = start + page_size
 
-    print(start, end)
-
     # Récupérer les chansons
     response = supabase.table("songs").select("*").range(start, end - 1).execute()
     
     # Récupérer le nombre total de chansons
     total_count = getTotalSongsCount()
     total_pages = (total_count + page_size - 1) // page_size  # Arrondi vers le haut
-    
+
     if(page > total_pages or page < 1):
         return {"error": "Page number out of range"}, 400
 
     # Remplacer les tag_ids par tag_names
     for song in response.data:
         tag_names = []
-        for tag_id in song.get('tag_ids', []):
-            tag_name = getTagNameById(tag_id).json
-            if 'error' in tag_name:
-                continue
-            tag_names.append(tag_name['tag_name'])
-        song['tag_names'] = tag_names
+        song['tag_names'] = getTagNamesByIds(song['tag_ids'])
         del song['tag_ids']
 
     # Construire la réponse
@@ -62,8 +55,38 @@ def getAllSongsService(page):
     }
     return result
 
-def searchSongsByFilters():
-    return "ok"
+def searchSongsByFilters(name='', artists='', tags=[]):
+    # On crée une requête de base
+    query = supabase.table('songs').select("*")
+
+    # Ajouter les filtres un par un
+    if name:
+        query = query.ilike("song_name", f"%{name}%")  # Recherche insensible à la casse pour le nom
+    if artists:
+        query = query.ilike("song_artists", f"%{artists}%")  # Recherche insensible à la casse pour les artistes
+    if tags:
+        # On récupère les ids des tags à partir de leurs noms
+        tags_id = []
+        for tag in tags:
+            tag_id_response = getTagIdByName(tag).json
+            if 'error' not in tag_id_response:
+                tags_id.append(tag_id_response['tag_id'])
+        
+        # Conversion des ids en chaîne de caractères
+        tags_id = [str(tag_id) for tag_id in tags_id]
+        
+        # Application du filtre sur les tags
+        query = query.cs("tag_ids", tags_id)  # Vérifie si tag_ids contient les tags_id spécifiés
+
+    # Exécution de la requête
+    response = query.execute()
+
+    #Pour chaque chanson, je remplace les tag_ids par les tag_names
+    for song in response.data:
+        tag_names = []
+        song['tag_names'] = getTagNamesByIds(song['tag_ids'])
+        del song['tag_ids']
+    return response.data
 
 def patchSongService(id, song):
     #Je commence par récupérer la chanson
@@ -187,14 +210,10 @@ def getTagIdByName(name):
 
     return jsonify({"tag_id": response.data[0]['id']})
 
-#Get a tag name by its id
-def getTagNameById(id):
-    response = supabase.table("tags").select("*").eq("id", id).execute()
-
-    if len(response.data) == 0:
-        return jsonify({"error": "Tag not found"})
-
-    return jsonify({"tag_name": response.data[0]['tag_name']})
+def getTagNamesByIds(ids):
+    #Je récupère tous les noms des tags de manière optimisée
+    response = supabase.table("tags").select("tag_name").in_("id", ids).execute()
+    return [tag['tag_name'] for tag in response.data]
 
 #Get all tags names
 def getAllTagsNames():
