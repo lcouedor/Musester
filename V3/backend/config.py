@@ -1,2 +1,2 @@
 playlistPrefix: str = "IA-"
-mode: str = "dev" # dev, prod
+mode: str = "prod" # dev, prod
