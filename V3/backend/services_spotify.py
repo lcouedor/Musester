@@ -1,7 +1,7 @@
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-from services_bdd import addSong, removeSong, getAllSongsService, addTagService, isPlaylistSongInDb, getTagIdByNameForSpotify, get_or_create_tag, addSongsBatch
+from services_bdd import addSong, removeSong, getAllSongsService, addTagService, isPlaylistSongInDb, getTagIdByNameForSpotify, getTagIdByName, addSongsBatch
 from services_chatgpt import getSongAutomaticTagsBatch
 
 from config import playlistPrefix
@@ -99,7 +99,7 @@ async def syncService(sourcePlaylistId):
     prepared_songs = []
 
     # Par paquet, je fais une requête à chatGPT pour récupérer les tags
-    batch_size = 15
+    batch_size = 12
 
     async def process_batch(batch, start_index):
         # Je prépare une variable data qui m'affiche une ligne par chanson, avec le titre et les artistes
@@ -112,9 +112,19 @@ async def syncService(sourcePlaylistId):
         # Pour chaque chanson, je récupère les tags
         for j in range(len(batch)):
             song_tags_ids = []
+            #Je vériie si le tag existe, sinon je passe à la chanson suivante
+            if j >= len(song_tags):
+                continue
             for tag in song_tags[j]:
-                tag_id = get_or_create_tag(tag)  # Appel asynchrone
+                if not tag:
+                    continue
+                tag_id = getTagIdByNameForSpotify(tag)  # Appel asynchrone
+                if 'error' in tag_id:
+                    #Si le tag n'existe pas, je passe à la chanson suivante
+                    continue
                 song_tags_ids.append(tag_id)
+            #Je transforme song_tags_ids pour que ça soit juste un tableau d'ids
+            song_tags_ids = [tag['tag_id'] for tag in song_tags_ids]
             batch[j]['tag_ids'] = song_tags_ids
             prepared_songs.append(batch[j])
         
@@ -172,4 +182,4 @@ def createThemePlaylist(songs: list, playlist_name: str):
     for i in range(0, len(spotify_ids), 100):
         spotify.playlist_add_items(playlist['id'], spotify_ids[i:i+100])
 
-    return {"error": "Not implemented yet"}
+    return {"message": "Playlist created"}

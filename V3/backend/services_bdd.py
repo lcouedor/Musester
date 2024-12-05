@@ -1,26 +1,69 @@
-from flask import jsonify
+from flask import jsonify, request
 from supabase import create_client, Client
 from utils import getSecret
 from dotenv import load_dotenv
 import time
+from pprint import pprint
 
 load_dotenv()
 
 supabase: Client = create_client(getSecret('SUPABASE_URL'), getSecret('SUPABASE_KEY'))
 
-def getAllSongsService():
-    response = supabase.table("songs").select("*").execute()
-    #Je remplace les tag_ids par les tag_names
+# BASE_URL = "http://127.0.0.1:5000/songs"  # Remplacez par l'URL de votre application si différente
+
+def getTotalSongsCount():
+    response = supabase.table("songs").select("id", count="exact").execute()
+    return response.count  # Renvoie le nombre total de chansons
+
+def getAllSongsService(page):
+    #Je retire juste ce qu'il y a après le dernier / dans l'url
+    BASE_URL = request.base_url.rsplit('/', 1)[0]
+    # Convertir la page en entier
+    try:
+        page = int(page)
+    except ValueError:
+        return {"error": "Invalid page number"}, 400
+
+    # Taille de page et indices
+    page_size = 20
+    #la page commence à 1 mais les indices commencent à 0
+    start = (page-1) * page_size
+    end = start + page_size
+
+    print(start, end)
+
+    # Récupérer les chansons
+    response = supabase.table("songs").select("*").range(start, end - 1).execute()
+    
+    # Récupérer le nombre total de chansons
+    total_count = getTotalSongsCount()
+    total_pages = (total_count + page_size - 1) // page_size  # Arrondi vers le haut
+    
+    if(page > total_pages or page < 1):
+        return {"error": "Page number out of range"}, 400
+
+    # Remplacer les tag_ids par tag_names
     for song in response.data:
         tag_names = []
-        for tag_id in song['tag_ids']:
+        for tag_id in song.get('tag_ids', []):
             tag_name = getTagNameById(tag_id).json
             if 'error' in tag_name:
                 continue
             tag_names.append(tag_name['tag_name'])
         song['tag_names'] = tag_names
         del song['tag_ids']
-    return response.data
+
+    # Construire la réponse
+    result = {
+        "songs": response.data,
+        "total_pages": total_pages,
+        "current_page": page,
+        "next_page_url": f"{BASE_URL}/{page + 1}" if page < total_pages else None
+    }
+    return result
+
+def searchSongsByFilters():
+    return "ok"
 
 def patchSongService(id, song):
     #Je commence par récupérer la chanson

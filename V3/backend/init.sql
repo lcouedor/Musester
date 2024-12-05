@@ -1,2 +1,68 @@
--- tags de base pour démarrer l'ia
-INSERT INTO "public"."tags" ("id", "tag_name") VALUES ('1', 'pop'), ('2', 'rock'), ('3', 'indie'), ('4', 'electronic'), ('5', 'jazz'), ('6', 'classical'), ('7', 'hip-hop'), ('8', 'rap'), ('9', 'metal'), ('10', 'reggae'), ('11', 'folk'), ('12', 'funk'), ('13', 'soul'), ('14', 'english'), ('15', 'spanish'), ('16', 'french'), ('17', 'german'), ('18', 'italian'), ('19', 'japanese'), ('20', 'russian'), ('21', 'korean'), ('22', 'happy'), ('23', 'sad'), ('24', 'nostalgic'), ('25', 'romantic'), ('26', 'melancholic'), ('27', 'energetic'), ('28', 'relaxing'), ('29', 'inspiring'), ('30', 'chill'), ('31', 'upbeat'), ('32', 'party'), ('33', 'workout'), ('34', 'roadtrip'), ('35', 'rainy-day'), ('36', 'study'), ('37', 'sleep'), ('38', 'adventurous'), ('39', 'cinematic'), ('40', 'anime'), ('41', 'instrumental'), ('42', 'acoustic'), ('43', 'live'), ('44', 'vocal'), ('45', 'danceable'), ('46', 'upbeat-tempo'), ('47', 'low-tempo'), ('48', 'vintage'), ('49', 'experimental'), ('50', 'ethereal'), ('51', 'ambient'), ('52', 'alternative'), ('53', 'swedish'), ('54', 'euphoric'), ('55', 'angry'), ('56', 'peaceful'), ('57', 'dark'), ('58', 'percussive'), ('59', 'unknown'), ('60', 'latin'), ('61', 'atmospheric');
+-- tags de base pour démarrer l'IA
+INSERT INTO "public"."tags" ("id", "tag_name") VALUES 
+
+(1, 'unknown'), 
+
+-- les genres de musique
+(2, 'pop'), 
+(3, 'rock'), 
+(4, 'indie'), 
+(5, 'electronic'), 
+(6, 'jazz'), 
+(7, 'classical'), 
+(8, 'hip-hop'), 
+(9, 'rap'), 
+(10, 'metal'), 
+(11, 'reggae'), 
+(12, 'punk'), 
+(13, 'soul'), 
+
+-- les langues
+(14, 'english'), 
+(15, 'spanish'), 
+(16, 'french'), 
+(17, 'german'), 
+(18, 'italian'), 
+(19, 'japanese'), 
+(20, 'russian'), 
+
+-- les humeurs
+(21, 'happy'), 
+(22, 'sad'), 
+(23, 'nostalgic'), 
+(24, 'romantic'), 
+(25, 'melancholic'), 
+(26, 'introspective'),
+(27, 'comedic'), 
+
+-- les ambiances
+(28, 'chill'), 
+(29, 'party'), 
+(30, 'aggressive'), 
+(31, 'poetic'), 
+(32, 'study'), 
+(33, 'danceable'), 
+(34, 'ethereal'), 
+(35, 'ambient'), 
+(36, 'epic'), 
+(37, 'emotional'), 
+(38, 'motivational'), 
+(39, 'dreamy'), 
+
+-- les styles
+(40, 'orchestral'),
+(41, 'cinematic'), 
+(42, 'soundtrack'), 
+(43, 'anime'), 
+(44, 'acoustic'), 
+(45, 'melodic'), 
+(46, 'alternative'), 
+
+-- les périodes
+(47, '60s-70s'), 
+(48, '80s'), 
+(49, '90s'), 
+(50, '2000s'), 
+(51, '2010s'), 
+(52, '2020s'), 
+(53, 'vintage'); 
