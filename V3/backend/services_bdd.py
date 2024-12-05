@@ -2,6 +2,7 @@ from flask import jsonify
 from supabase import create_client, Client
 from utils import getSecret
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
 
@@ -117,7 +118,17 @@ def addSong(song):
     return response.data
 
 def addSongsBatch(songs):
-    response = supabase.table("songs").insert(songs).execute()
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = supabase.table("songs").insert(songs).execute()
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(1)  # Attendre 1 seconde avant de réessayer
+                continue
+            else:
+                raise e
     return response.data
 
 def removeSong(id):

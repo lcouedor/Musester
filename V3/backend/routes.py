@@ -45,6 +45,7 @@ def createPlaylistBySongsTags():
 @routes.route('/sync', methods=['GET'])
 def sync():
     return jsonify(asyncio.run(syncService(sourcePlaylistId)))
+    # return jsonify(syncService(sourcePlaylistId))
 
 @routes.route('/createPlaylist', methods=['GET'])
 def getPlaylistProposalTags():
