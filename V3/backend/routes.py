@@ -2,25 +2,41 @@ from flask import Blueprint, jsonify, request
 from services_bdd import getAllSongsService, patchSongService, getSongsByTagsService, getAllTagsService, addTagService, searchSongsByFilters
 from services_spotify import syncService, createThemePlaylist
 from services_chatgpt import getTagListForPrompt
+from functools import wraps
+
 import asyncio
 
 from pprint import pprint
 
+from utils import getSecret
+from dotenv import load_dotenv
+load_dotenv()
+
 routes = Blueprint('routes', __name__)
 
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if request.headers.get('Authorization') != getSecret('MDP'):
+            return jsonify({'message': 'Unauthorized'}), 401
+        return f(*args, **kwargs)
+    return decorated
 #------------Routes------------
 #Home route
 @routes.route('/')
+@requires_auth
 def home():
     return "Hello world"
 
 #Get all songs
 @routes.route('/songs/<page>', methods=['GET'])
+@requires_auth
 def getAllSongs(page):
     return jsonify(getAllSongsService(page))
 
 #Get songs by filters
 @routes.route('/filteredSongs', methods=['GET'])
+@requires_auth
 def getSongsByFilters():
     name = ''
     artist = ''
@@ -38,28 +54,33 @@ def getSongsByFilters():
 
 #Get all tags
 @routes.route('/tags', methods=['GET'])
+@requires_auth
 def getAllTags():
     return jsonify(getAllTagsService())
 
 #Patch a song
 @routes.route('/songs/<id>', methods=['PATCH'])
+@requires_auth
 def patchSong(id):
     song = request.json
     return jsonify(patchSongService(id, song))
 
 #Add a tag
 @routes.route('/tags/<name>', methods=['POST'])
+@requires_auth
 def addTag(name):
     return jsonify(addTagService(name))
 
 #Get songs with matching tags
 @routes.route('/songsByTags', methods=['GET'])
+@requires_auth
 def createPlaylistBySongsTags():
     result = getSongsByTagsService(request)
     return jsonify(result)
 
 #Synchronize the database with the Spotify source playlist
 @routes.route('/sync', methods=['GET'])
+@requires_auth
 def sync():
     playlistId = request.json['playlist_id']
     try:
@@ -69,6 +90,7 @@ def sync():
     return jsonify(asyncio.run(syncService(playlistId)))
 
 @routes.route('/getProposalPlaylist', methods=['GET'])
+@requires_auth
 def getPlaylistProposalTags():
     prompt = request.json['prompt']
     playlist_name = request.json['playlist_name']
@@ -94,10 +116,8 @@ def getPlaylistProposalTags():
 
     return jsonify(tagList)
 
-    # return jsonify(createThemePlaylist(songs, playlist_name))
-    # # return jsonify({'message': 'Playlist created'})
-
 @routes.route('/createPlaylistPrompt', methods=['GET'])
+@requires_auth
 def createPlaylistPrompt():
     #Me génère une playlist à partir des tags passés en paramètre
     #Je récupère les tags

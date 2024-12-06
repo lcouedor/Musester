@@ -66,11 +66,7 @@ def searchSongsByFilters(name='', artists='', tags=[]):
         query = query.ilike("song_artists", f"%{artists}%")  # Recherche insensible à la casse pour les artistes
     if tags:
         # On récupère les ids des tags à partir de leurs noms
-        tags_id = []
-        for tag in tags:
-            tag_id_response = getTagIdByName(tag).json
-            if 'error' not in tag_id_response:
-                tags_id.append(tag_id_response['tag_id'])
+        tags_id = getTagIdByNameForSpotify(tags)
         
         # Conversion des ids en chaîne de caractères
         tags_id = [str(tag_id) for tag_id in tags_id]
@@ -95,12 +91,9 @@ def patchSongService(id, song):
     #Si il y a la clé tag_names, je la remplace par tag_ids
     if 'tag_names' in song:
         tag_names = song['tag_names']
-        tags_id = []
-        for tag_name in tag_names:
-            tag_id = getTagIdByName(tag_name).json
-            if 'error' in tag_id:
-                continue
-            tags_id.append(tag_id['tag_id'])
+
+        tags_id = getTagIdByNameForSpotify(tag_names)
+
         song['tag_ids'] = tags_id
         del song['tag_names']
 
@@ -208,17 +201,6 @@ def removeSong(id):
     response = supabase.table("songs").delete().eq("id", id).execute()
     return jsonify(response.data)
 
-#TODO récupérer une liste de tags d'un coup
-#TODO ne garde qu'une seule fonction entre celle là et getTagIdByNameForSpotify et changer la valeur de retour
-#Get a tag id by its name
-def getTagIdByName(name):
-    response = supabase.table("tags").select("*").eq("tag_name", name).execute()
-
-    if len(response.data) == 0:
-        return jsonify({"error": "Tag not found"})
-
-    return jsonify({"tag_id": response.data[0]['id']})
-
 def getTagNamesByIds(ids):
     #Je récupère tous les noms des tags de manière optimisée
     response = supabase.table("tags").select("tag_name").in_("id", ids).execute()
@@ -240,25 +222,13 @@ def getAllTagsId(including_tags, excluding_tags, or_tags):
     or_tags_id = []
 
     if including_tags:
-        for tag in including_tags:
-            tag_id = getTagIdByName(tag).json
-            if 'error' in tag_id:
-                continue
-            including_tags_id.append(tag_id['tag_id'])
+        including_tags_id = getTagIdByNameForSpotify(including_tags)
 
     if excluding_tags:
-        for tag in excluding_tags:
-            tag_id = getTagIdByName(tag).json
-            if 'error' in tag_id:
-                continue
-            excluding_tags_id.append(tag_id['tag_id'])
+        excluding_tags_id = getTagIdByNameForSpotify(excluding_tags)
 
     if or_tags:
-        for tag in or_tags:
-            tag_id = getTagIdByName(tag).json
-            if 'error' in tag_id:
-                continue
-            or_tags_id.append(tag_id['tag_id'])
+        or_tags_id = getTagIdByNameForSpotify(or_tags)
 
     # Si je n'ai qu'un seul tag dans or_tags, je le mets dans including_tags
     if len(or_tags_id) == 1:
@@ -271,13 +241,14 @@ def isPlaylistSongInDb(spotify_id):
     response = supabase.table("songs").select("*").filter("song_spotify_id", "eq", spotify_id).execute()
     return len(response.data) > 0
 
-def getTagIdByNameForSpotify(name):
-    response = supabase.table("tags").select("*").eq("tag_name", name).execute()
+def getTagIdByNameForSpotify(names):
+    #Je récupère tous id des noms de tags de manière optimisée
+    response = supabase.table("tags").select("id", "tag_name").in_("tag_name", names).execute()
+    response = response.data
+    response = [tag['id'] for tag in response]
+    return response
 
-    if len(response.data) == 0:
-        return {"error": "Tag not found"}
 
-    return {"tag_id": response.data[0]['id']}
 
 def get_or_create_tag(tag_name):
     try:

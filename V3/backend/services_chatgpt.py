@@ -63,9 +63,6 @@ def getSongAutomaticTagsBatch(batch):
 
     result = response.choices[0].message.content
 
-    print(result)
-
-
     #Je découpe les réponses pour chaque chanson
     result = result.split('$')
     #Et pour chaque chanson, je découpe les tags
@@ -74,47 +71,6 @@ def getSongAutomaticTagsBatch(batch):
     result = [[tag.strip() for tag in song if tag.strip()] for song in result]
     
     return result
-
-# def getSongAutomaticTags(song_name, artists):
-#     tags = getAllTagsNames()
-
-#     tags = ', '.join(tags)
-
-#     preprompt = "You are a music tagging assistant. Your task is to determine relevant tags for a song based on its title and artists."
-#     preprompt += "Here are the rules you must follow:"
-#     preprompt += "1. If you don't know the song, respond only with 'unknown', but you should know most of the songs."
-#     preprompt += "2. Tags must :"
-#     preprompt += "- Be in English."
-#     preprompt += "- Be general and widely understandable (avoid overly specific or niche tags, e.g., series names,artists names, highly obscure terms like 'surfy', ...)."
-#     preprompt += "- Represent broad categories like genres, language, emotions, listening moods, or other significant aspects of the song, but it must add meaningful value to the filtering process coming next."
-#     preprompt += "- If you feel like multiple tags fill the same role, add them all."
-#     preprompt += "3. Use the provided list of pre-existing tags as a huge priority. Try to align with them whenever applicable. However, if absolutely essential tags are missing, you are allowed to create new ones. Avoid generating too many new tags."
-#     preprompt += "4. Respond only with a list of tags, each separated by a hyphen (-). Do not add any explanations or additional text."
-#     preprompt += "Input format:"
-#     preprompt += "- Song title: <song_title>"
-#     preprompt += "- Artists: <artist_names>"
-#     preprompt += "- Existing tags: <list_of_existing_tags>"
-#     preprompt += "Output format: tag1 - tag2 - tag3 - ..."
-
-#     prompt = "Titre : " + song_name
-#     prompt += "\nArtiste(s) : " + artists
-#     prompt += "\nAExisting tags: " + tags
-  
-#     response = client.chat.completions.create(
-#         model="gpt-3.5-turbo-1106",
-#         messages=[
-#             {"role": "system", "content": preprompt},
-#             {"role": "user", "content": prompt},
-#         ]
-#     )
-
-#     result = response.choices[0].message.content
-#     #Je fais un tableau à partir des tags
-#     result = result.split('-')
-#     #Je supprime les espaces et les tags vides
-#     result = [tag.strip() for tag in result if tag.strip()]
-
-#     return result
 
 def getTagListForPrompt(prompt):
     tags = getAllTagsNames()
