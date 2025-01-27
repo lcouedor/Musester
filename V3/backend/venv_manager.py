@@ -17,7 +17,7 @@ def deactivate():
         print('Not in a virtual environment')
         return
     print('Deactivating virtual environment...')
-    subprocess.call(['conda', 'deactivate'], shell=True)
+    subprocess.call(['exit', 'deactivate'], shell=True)
     print('Virtual environment deactivated')
 
 def create():
@@ -37,12 +37,17 @@ def install_requirements():
     print('Installing dependencies from requirements.txt...')
     subprocess.call(['pip', 'install', '-r', 'requirements.txt'])
 
+def see_installed_packages():
+    print('Installed packages:')
+    subprocess.call(['pip', 'freeze'])
+
 def main():
     print('1. Create virtual environment')
     print('2. Activate virtual environment')
     print('3. Deactivate virtual environment')
     print('4. Remove virtual environment')
     print('5. Install dependencies')
+    print('6. See installed packages')
     
     choice = input('Enter your choice: ')
     if choice == '1':
@@ -55,6 +60,8 @@ def main():
         remove()
     elif choice == '5':
         install_requirements()
+    elif choice == '6':
+        see_installed_packages()
     else:
         print('Invalid choice')
 

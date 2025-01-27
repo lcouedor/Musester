@@ -1,0 +1,127 @@
+@use "./variables.scss" as *;
+
+*{
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.mainPage {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+
+    background: linear-gradient(to top, $black 50%, $green 100%);
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    font-family: 'Roboto', sans-serif;
+    color: $lightGreen;
+    text-align: center;
+}
+
+#authentificationPage{
+    font-size: 1.5rem;
+    display: flex;
+    flex-direction: column;
+
+    .logos{
+        width: 100%;
+        padding-top: 5vh;
+        padding-bottom: 5vh;
+        display: flex;
+        justify-content: space-evenly;
+        align-items: center;
+        img{
+            width: 100px;
+            height: 100px;
+        }
+    }
+
+    button{
+        font-size: 1.5rem
+    }
+
+    form{
+        width: 50%;
+        margin-top: 5vh;
+    }
+
+    ul{
+        margin-top: auto;
+        margin-bottom: auto;
+        margin-left: 2vw;
+
+        li{
+            display: flex;
+            color: white;
+            margin-top: 1vh;
+
+            span{
+                color: $brightGreen;
+                margin-right: 2vw;
+            }
+        }
+    }
+}
+
+form{
+    width: 100%;
+    display: inline-flex;
+    flex-direction: column;
+
+    label{
+        display: flex;
+    }
+
+    input{
+        width: 100%;
+        margin-bottom: 2vh;
+    }
+
+    button{
+        margin-left: auto;
+    }
+}
+
+button{
+    padding: 10px 50px 10px 50px;
+    border-radius: 25px;
+    border: none;
+    font-weight: bold;
+    color: $black;
+    background-color: $brightGreen;
+    cursor: pointer;
+}
+
+input{
+    padding: 10px;
+    border-radius: 25px;
+    border: none;
+    font-weight: bold;
+    color: $black;
+}
+
+.error{
+    padding: 0.5vh;
+    padding-left: 2vh;
+    padding-right: 2vh;
+    display: flex;
+    justify-content: end;
+    color: red;
+    font-size: small;
+}
+
+
+// Mode téléphone
+@media (max-width: 768px){
+    #authentificationPage{
+        form{
+            width: 90%;
+        }
+
+        ul{
+            font-size: 1rem;
+        }
+    }
+}

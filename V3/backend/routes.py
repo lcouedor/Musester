@@ -17,11 +17,18 @@ routes = Blueprint('routes', __name__)
 def requires_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if request.headers.get('Authorization') != getSecret('MDP'):
+        if request.headers.get('AuthorizationPassword') != getSecret('MDP') or request.headers.get('AuthorizationUser') != getSecret('USERNAME'):
             return jsonify({'message': 'Unauthorized'}), 401
         return f(*args, **kwargs)
     return decorated
+    
 #------------Routes------------
+@routes.route('/checkAuth', methods=['GET'])
+def checkAuth():
+    if request.headers.get('AuthorizationPassword') == getSecret('MDP') and request.headers.get('AuthorizationUser') == getSecret('USERNAME'):
+        return jsonify({'message': 'Authorized'}), 200
+    return jsonify({'message': 'Identifiant ou mot de passe incorrect.'}), 401
+
 #Home route
 @routes.route('/')
 @requires_auth
