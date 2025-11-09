@@ -47,4 +47,4 @@ def sync():
     return {'message': 'Playlist created successfully', 'execution_time': execution_time, 'checked_songs': len(tracks_info), 'playlist_id': createPlaylist, "songs_acceptance": iaDecisions}
     
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
