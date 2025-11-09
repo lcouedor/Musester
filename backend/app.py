@@ -20,6 +20,10 @@ SPOTIPY_CLIENT_ID = getSecret('SPOTIFY_ID')
 SPOTIPY_CLIENT_SECRET = getSecret('SPOTIFY_SECRET')
 SPOTIPY_REDIRECT_URI = getSecret('SPOTIFY_REDIRECT')
 
+@app.route('/')
+def home():
+    return jsonify({'message': 'Welcome to the Playlist Generator API'})
+
 @app.route('/generate', methods=['GET'])
 def sync():
     start_time = time.time()
