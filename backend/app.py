@@ -26,6 +26,7 @@ def sync():
     playlistId = request.json['playlist_id']
     playlistName = request.json['playlist_name']
     playlistPrompt = request.json['playlist_prompt']
+    treshold_match_percentage = request.json['treshold_match_percentage']
     try:
         playlistId = playlistId.split('playlist/')[1].split('?')[0]
     except:
@@ -34,7 +35,7 @@ def sync():
     tracks_info = get_playlist_tracks_infos(playlistId)
     iaDecisions = decisionHandler(playlistPrompt, tracks_info)
 
-    selected_songs_ids = get_matching_songs_ids(tracks_info, iaDecisions)
+    selected_songs_ids = get_matching_songs_ids(tracks_info, iaDecisions, treshold_match_percentage)
     createPlaylist = create_user_playlist(playlistName, playlistPrompt, selected_songs_ids)
     
     execution_time = f"{round(time.time() - start_time, 2)}s"

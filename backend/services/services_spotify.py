@@ -1,7 +1,7 @@
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-from config import playlistPrefix, treshold_match_percentage
+from config import playlistPrefix
 
 from utils import getSecret
 from dotenv import load_dotenv
@@ -41,7 +41,7 @@ def get_playlist_tracks_infos(playlist_id):
         
     return songs
 
-def get_matching_songs_ids(songs, iaDecisions):
+def get_matching_songs_ids(songs, iaDecisions, treshold_match_percentage):
     selected_songs = []
     for decision in iaDecisions:
         # si l'id est aussi présent dans les chansons et que le pourcentage est au dessus du seuil
