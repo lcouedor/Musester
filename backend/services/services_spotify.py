@@ -54,5 +54,6 @@ def create_user_playlist(playlist_name: str, description: str, songs_ids: list):
     spotify = get_spotify_client()
     user_id = spotify.current_user()['id']
     playlist = spotify.user_playlist_create(user=user_id, name=playlistPrefix + playlist_name, public=False, description=description)
-    spotify.playlist_add_items(playlist_id=playlist['id'], items=songs_ids)
+    for i in range(0, len(songs_ids), 100):
+        spotify.playlist_add_items(playlist_id=playlist['id'], items=songs_ids[i:i+100])
     return playlist['id']
