@@ -1,3 +1,4 @@
+TODO :: Ce readme est dans une ancienne version, une révision est nécessaire
 # Musester (Music sorter)
 
 # Objectif du projet
