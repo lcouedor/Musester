@@ -3,7 +3,7 @@ from flask_cors import CORS
 from utils import getSecret
 from dotenv import load_dotenv
 from services.services_spotify import get_playlist_tracks_infos, get_matching_songs_ids, create_user_playlist
-from services.services_chatgpt import decisionHandler
+from services.services_chatgpt import decisionHandler_parallel as decisionHandler
 from flask import jsonify
 from pprint import pprint
 import json
