@@ -1,23 +1,25 @@
-TODO :: Ce readme est dans une ancienne version, une révision est nécessaire
 # Musester (Music sorter)
 
 # Objectif du projet
-Répartir les musiques d'une playlist spotify "source" dans d'autres playlists en fonction de divers attributs (genres des artistes, valence, energy) d'en le but d'en déduire un mood et un genre d'écoute
+Répartir les musiques d'une playlist spotify "source" dans d'autres playlists en fonction de leur mood d'écoute.
 
-## V1
-- Version initiale, incluant la suppression automatique dans les playlists enfants les musiques qui ne sont plus dans la source.
-- La définition des bornes des critères est manuelle
-- La non conformité à un critère est éliminatoire.
-- Permet de partir de 0 afin de créer l'ensemble des playlists souhaitées.
+# Fonctionnement
+Appeler l'endpoint "generate" pour lancer le tri automatique. Informations nécessaires : 
+    - playlist_id -> l'id de la playlist source
+    - playlist_name -> le nom à donner à la nouvelle playlist créée automatiquement
+    - playlist_prompt -> la description donnée à la playlist, détermine l'affectation des musiques
+    - treshold_match_percentage -> seuil d'acceptation d'une musique, explication ci-dessous
 
-## V2
-- Version n'incluant pas la suppression automatique dans les playlists enfants des musiques absentes de la playlist source, le filtre par date de sortie, et la date d'ajout à la playlist.
-- Version plus précise nécessitant cependant la création des playlists manuellement sur spotify ainsi qu'un échantillonnage préalable (au moins 5 titres dans une playlist pour qu'elle puisse être échantillonnée).
-- Une moyenne pour chaque critère d'importance (renseigné dans la configuration) est établie.
-- Version plus flexible car la non conformité à un seul critère n'entraine pas nécessairement la non conformité à la playlist (plus précise par la même occasion, permettant d'ajuster sur les cas d'erreurs de valeurs récupérées par l'API Spotify).
-- Vérification des critères et des genres distincte. Chacun est flexible à son niveau, mais les deux doivent être validés pour valider l'ajout d'une musique à une playlist.
+La description est envoyée à l'API chatGPT  avec la liste des musiques de la playlist source. Il est demandé à l'IA de retourner pour chaque musique un taux de correspondance entre la musique et la description souhaitée.
 
-# Fichiers
-- Le fichier config.json donne l'exemble de ce fichier, avec ma propre configuration.
-- Le fichier data_artists.json est une base de données des artistes déjà fetch pour récupérer leur genre, et limiter les appels API (le supprimer ou supprimer son contenu pour mettre à jour sur des artistes déjà présents).
-- Le fichier data_songs de la même manière est une base de données des audio_features d'une musique, fetch par l'API spotify.
+# Utilisation
+- Activer l'environnement virtuel :
+  - >source myenv/bin/activate
+- Lancer l'API :
+  - >./myenv/bin/python backend/app.py
+- Requêter l'endpoint de génération
+- Le programme traitera les musiques par batch de 20 et créera automatiquement la playlist souhaitée avec les musiques adaptées issues de la playlist source
+
+# Déploiement
+-- Work in progress --
+> vercel --cwd backend to update prod
