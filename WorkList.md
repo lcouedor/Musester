@@ -1,0 +1,2 @@
+- [ ] Ajouter un endpoint pour supprimer de toutes les playlists données en paramètre les musiques qui ne sont plus dans la playlist source elle aussi donnée en paramètre
+- [ ] Modifier le /generate pour autoriser une playlist existante en destination et ne pas refaire tout le calcul
