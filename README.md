@@ -4,13 +4,20 @@
 Répartir les musiques d'une playlist spotify "source" dans d'autres playlists en fonction de leur mood d'écoute.
 
 # Fonctionnement
-Appeler l'endpoint "generate" pour lancer le tri automatique. Informations nécessaires : 
+La description est envoyée à l'API chatGPT  avec la liste des musiques de la playlist source. Il est demandé à l'IA de retourner pour chaque musique un taux de correspondance entre la musique et la description souhaitée.
+
+# Endpoints
+- GET "/generate" pour lancer le tri automatique.
+Paramètres : 
     - playlist_id -> l'id de la playlist source
     - playlist_name -> le nom à donner à la nouvelle playlist créée automatiquement
     - playlist_prompt -> la description donnée à la playlist, détermine l'affectation des musiques
     - treshold_match_percentage -> seuil d'acceptation d'une musique, explication ci-dessous
 
-La description est envoyée à l'API chatGPT  avec la liste des musiques de la playlist source. Il est demandé à l'IA de retourner pour chaque musique un taux de correspondance entre la musique et la description souhaitée.
+- DELETE "/sync" pour supprimer de playlists de destination toutes les musiques qui ne sont plus dans la source.
+Paramètres :
+  - source_id -> l'id de la playlist source
+  - targets_ids -> tableau d'ids de playlists de destination
 
 # Utilisation
 - Activer l'environnement virtuel :
