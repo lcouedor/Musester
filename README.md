@@ -9,7 +9,7 @@ La description est envoyée à l'API chatGPT  avec la liste des musiques de la p
 # Endpoints
 - GET "/generate" pour lancer le tri automatique.
 Paramètres : 
-    - playlist_id -> l'id de la playlist source
+    - source_id -> l'id de la playlist source
     - playlist_name -> le nom à donner à la nouvelle playlist créée automatiquement
     - playlist_prompt -> la description donnée à la playlist, détermine l'affectation des musiques
     - treshold_match_percentage -> seuil d'acceptation d'une musique, explication ci-dessous
@@ -24,6 +24,8 @@ Paramètres :
   - >source myenv/bin/activate
 - Lancer l'API :
   - >./myenv/bin/python backend/app.py
+  - > OU
+  - > flask run
 - Requêter l'endpoint de génération
 - Le programme traitera les musiques par batch de 20 et créera automatiquement la playlist souhaitée avec les musiques adaptées issues de la playlist source
 

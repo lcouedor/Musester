@@ -46,9 +46,9 @@ def get_playlist_tracks_infos(playlist_id, extended=False):
         
     return songs
 
-def get_matching_songs_ids(songs, iaDecisions, treshold_match_percentage):
+def get_matching_songs_ids(songs, ia_decisions, treshold_match_percentage):
     selected_songs = []
-    for decision in iaDecisions:
+    for decision in ia_decisions:
         # si l'id est aussi présent dans les chansons et que le pourcentage est au dessus du seuil
         if any(song['id'] == decision['id'] for song in songs) and int(decision['match']) >= treshold_match_percentage:
             selected_songs.append(next(song['id'] for song in songs if song['id'] == decision['id']))
@@ -63,7 +63,17 @@ def create_user_playlist(playlist_name: str, description: str, songs_ids: list):
         spotify.playlist_add_items(playlist_id=playlist['id'], items=songs_ids[i:i+100])
     return playlist['id']
 
+def add_songs_to_playlist(playlist_id: str, songs_ids: list):
+    spotify = get_spotify_client()
+    for i in range(0, len(songs_ids), 100):
+        spotify.playlist_add_items(playlist_id=playlist_id, items=songs_ids[i:i+100])
+
 def remove_songs_from_playlist(playlist_id: str, songs_ids: list):
     spotify = get_spotify_client()
     for i in range(0, len(songs_ids), 100):
         spotify.playlist_remove_all_occurrences_of_items(playlist_id=playlist_id, items=songs_ids[i:i+100])
+
+def get_playlist_description(playlist_id: str):
+    spotify = get_spotify_client()
+    playlist = spotify.playlist(playlist_id)
+    return playlist['description']
