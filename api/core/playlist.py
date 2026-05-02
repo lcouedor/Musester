@@ -22,76 +22,59 @@ def generate_playlist(source_id: str, playlist_name: str, prompt: str) -> dict:
     }
 
 
-def update_all_playlists(source_id: str) -> dict:
+def sync_all_playlists(source_id: str) -> dict:
     """
-    Met à jour toutes les playlists générées (préfixe IA-) avec les nouveaux
-    morceaux de la source ajoutés depuis le dernier ajout à chaque playlist.
+    Pour chaque playlist IA- :
+    1. Retire les morceaux qui ne sont plus dans la source
+    2. Ajoute les nouveaux morceaux de la source qui correspondent au prompt
     """
-    source_tracks    = _spotify.get_tracks(source_id, extended=True)
-    source_ids       = {t.id for t in source_tracks}
-    generated        = _spotify.get_user_generated_playlists()
-    results          = {}
+    source_tracks = _spotify.get_tracks(source_id, extended=True)
+    source_ids    = {t.id for t in source_tracks}
+    generated     = _spotify.get_user_generated_playlists()
+    results       = {}
 
     for playlist in generated:
         pid  = playlist['id']
         name = playlist['name']
 
-        # Déterminer la date de référence
         target_tracks = _spotify.get_tracks(pid, extended=True)
         existing_ids  = {t.id for t in target_tracks}
 
+        # 1. Suppression des morceaux absents de la source
+        to_remove = [t.id for t in target_tracks if t.id not in source_ids]
+        if to_remove:
+            _spotify.remove_from_playlist(pid, to_remove)
+
+        # 2. Déterminer la date de référence pour les nouveaux morceaux
         if target_tracks:
             last_added = max(t.added_at for t in target_tracks)
         else:
-            # Playlist vide — utiliser la date de création stockée dans la description
             last_added = _spotify.get_playlist_created_at(pid)
 
         if not last_added:
-            logger.warning("No reference date for '%s', skipping", name)
-            results[pid] = {'added': 0, 'reason': 'no reference date found'}
+            logger.warning("No reference date for '%s', skipping update step", name)
+            results[pid] = {'name': name, 'removed': len(to_remove), 'added': 0, 'reason': 'no reference date'}
             continue
 
-        # Morceaux de la source ajoutés après last_added, pas déjà dans la playlist
+        # 3. Morceaux de la source ajoutés après last_added, pas déjà dans la playlist
         new_tracks = [
             t for t in source_tracks
             if t.added_at > last_added and t.id not in existing_ids
         ]
 
-        if not new_tracks:
-            results[pid] = {'added': 0, 'reason': 'no new tracks in source'}
-            continue
+        added = 0
+        if new_tracks:
+            prompt    = _spotify.get_playlist_prompt(pid)
+            decisions = _classifier.classify(prompt, new_tracks)
+            selected  = _filter(decisions)
+            if selected:
+                _spotify.add_to_playlist(pid, selected)
+            added = len(selected)
 
-        prompt    = _spotify.get_playlist_prompt(pid)
-        decisions = _classifier.classify(prompt, new_tracks)
-        selected  = _filter(decisions)
-        _spotify.add_to_playlist(pid, selected)
-
-        logger.info("Updated '%s': +%d tracks", name, len(selected))
-        results[pid] = {'name': name, 'added': len(selected), 'checked': len(new_tracks)}
+        logger.info("Synced '%s': -%d / +%d tracks", name, len(to_remove), added)
+        results[pid] = {'name': name, 'removed': len(to_remove), 'added': added, 'checked': len(new_tracks)}
 
     return results
-
-
-def sync_all_playlists(source_id: str) -> dict:
-    """
-    Supprime de toutes les playlists générées (préfixe IA-) les morceaux
-    qui ne sont plus dans la playlist source.
-    """
-    source_ids = {t.id for t in _spotify.get_tracks(source_id)}
-    generated  = _spotify.get_user_generated_playlists()
-    summary    = {}
-
-    for playlist in generated:
-        pid          = playlist['id']
-        name         = playlist['name']
-        target_tracks = _spotify.get_tracks(pid)
-        to_remove    = [t.id for t in target_tracks if t.id not in source_ids]
-
-        _spotify.remove_from_playlist(pid, to_remove)
-        logger.info("Synced '%s': -%d tracks", name, len(to_remove))
-        summary[pid] = {'name': name, 'removed': len(to_remove)}
-
-    return summary
 
 
 def _filter(decisions: list[Decision]) -> list[str]:
