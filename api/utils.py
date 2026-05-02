@@ -1,4 +1,4 @@
 import os
 
-def getSecret(key):
+def getSecret(key: str) -> str:
     return os.getenv(key)
