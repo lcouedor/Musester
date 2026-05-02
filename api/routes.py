@@ -8,8 +8,9 @@ from typing import Optional
 from flask import Blueprint, request, jsonify, redirect, session
 
 from core.playlist import generate_playlist, sync_all_playlists
-from services.auth import get_auth_url, exchange_code, save_token, get_valid_token
+from services.auth import get_auth_url, exchange_code, save_token, get_valid_token, save_history, get_history
 from services.spotify import SpotifyService
+import config
 
 logger = logging.getLogger(__name__)
 bp     = Blueprint('api', __name__)
@@ -43,8 +44,11 @@ def require_auth(f):
 def _elapsed(start: float) -> str:
     return f"{round(time.time() - start, 2)}s"
 
-def _ok(data: dict, start: float) -> tuple:
-    return jsonify({'error': None, 'data': data, 'execution_time': _elapsed(start)}), 200
+def _ok(data: dict, start: float = None) -> tuple:
+    resp = {'error': None, 'data': data}
+    if start is not None:
+        resp['execution_time'] = _elapsed(start)
+    return jsonify(resp), 200
 
 def _err(message: str, status: int = 400) -> tuple:
     return jsonify({'error': message, 'data': None}), status
@@ -78,7 +82,7 @@ def login():
 def callback():
     error = request.args.get('error')
     if error:
-        return redirect(f"{os.getenv('FRONTEND_URL')}?error={error}")
+        return redirect(f"{config.FRONTEND_URL}?error={error}")
 
     state = request.args.get('state')
     if state != session.get('oauth_state'):
@@ -91,12 +95,21 @@ def callback():
     session['user_id'] = user_id
 
     logger.info("User '%s' authenticated", user_id)
-    return redirect(os.getenv('FRONTEND_URL'))
+    return redirect(config.FRONTEND_URL)
+
 
 @bp.route('/auth/logout')
 def logout():
     session.clear()
     return jsonify({'error': None, 'data': {'message': 'Logged out'}})
+
+
+@bp.route('/auth/me')
+def me():
+    user_id = session.get('user_id')
+    if not user_id:
+        return _err('Not authenticated', 401)
+    return jsonify({'error': None, 'data': {'user_id': user_id}})
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +129,20 @@ def generate(access_token: str):
 
     start  = time.time()
     result = generate_playlist(access_token, _parse_id(source_id), name, prompt)
-    return _ok(result, start)
+    elapsed = _elapsed(start)
+
+    # Sauvegarde dans l'historique
+    save_history(session['user_id'], {
+        'playlist_id':    result['playlist_id'],
+        'playlist_name':  name,
+        'prompt':         prompt,
+        'checked_songs':  result['checked_songs'],
+        'selected_songs': result['selected_songs'],
+        'execution_time': elapsed,
+    })
+
+    result['execution_time'] = elapsed
+    return _ok(result)
 
 
 @bp.route('/sync', methods=['POST'])
@@ -133,16 +159,32 @@ def sync(access_token: str):
     return _ok(result, start)
 
 
-@bp.route('/auth/me')
-def me():
+@bp.route('/playlists', methods=['GET'])
+@require_auth
+def playlists(access_token: str):
+    """Retourne les playlists IA- de l'utilisateur avec leur prompt et dernière sync."""
+    spotify   = SpotifyService(access_token)
+    generated = spotify.get_user_generated_playlists()
+    result    = []
+
+    for p in generated:
+        pid          = p['id']
+        prompt       = spotify.get_playlist_prompt(pid)
+        tracks       = spotify.get_tracks(pid, extended=True)
+        last_sync    = max((t.added_at for t in tracks), default=None)
+        result.append({
+            'id':          pid,
+            'name':        p['name'],
+            'prompt':      prompt,
+            'track_count': len(tracks),
+            'last_sync':   last_sync,
+        })
+
+    return _ok(result)
+
+
+@bp.route('/history', methods=['GET'])
+@require_auth
+def history(access_token: str):
     user_id = session.get('user_id')
-    if not user_id:
-        return _err('Not authenticated', 401)
-    return jsonify({'error': None, 'data': {'user_id': user_id}})
-
-
-@bp.route('/auth/login-url')
-def login_url():
-    state = secrets.token_urlsafe(16)
-    session['oauth_state'] = state
-    return jsonify({'error': None, 'data': {'url': get_auth_url(state)}})
+    return _ok(get_history(user_id))

@@ -6,29 +6,25 @@ import time
 from typing import Optional
 
 import requests
-
 import config
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'tokens.db')
+HISTORY_PATH = os.path.join(os.path.dirname(__file__), '..', 'history.db')
 
 SPOTIFY_AUTH_URL  = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 
 
-# ---------------------------------------------------------------------------
-# DB
-# ---------------------------------------------------------------------------
-
-def _get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+def _get_conn(path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db():
-    with _get_conn() as conn:
+    with _get_conn(DB_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tokens (
                 user_id       TEXT PRIMARY KEY,
@@ -37,15 +33,50 @@ def init_db():
                 expires_at    INTEGER NOT NULL
             )
         """)
-    logger.info("Token DB ready")
+    with _get_conn(HISTORY_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS history (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id        TEXT NOT NULL,
+                created_at     TEXT NOT NULL,
+                playlist_id    TEXT NOT NULL,
+                playlist_name  TEXT NOT NULL,
+                prompt         TEXT NOT NULL,
+                checked_songs  INTEGER NOT NULL,
+                selected_songs INTEGER NOT NULL,
+                execution_time TEXT NOT NULL
+            )
+        """)
+    logger.info("DBs ready")
 
 
-# ---------------------------------------------------------------------------
-# OAuth helpers
-# ---------------------------------------------------------------------------
+def save_history(user_id: str, entry: dict):
+    with _get_conn(HISTORY_PATH) as conn:
+        conn.execute("""
+            INSERT INTO history
+                (user_id, created_at, playlist_id, playlist_name, prompt, checked_songs, selected_songs, execution_time)
+            VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            entry['playlist_id'],
+            entry['playlist_name'],
+            entry['prompt'],
+            entry['checked_songs'],
+            entry['selected_songs'],
+            entry['execution_time'],
+        ))
+
+
+def get_history(user_id: str) -> list:
+    with _get_conn(HISTORY_PATH) as conn:
+        rows = conn.execute("""
+            SELECT * FROM history WHERE user_id = ?
+            ORDER BY created_at DESC LIMIT 20
+        """, (user_id,)).fetchall()
+    return [dict(r) for r in rows]
+
 
 def get_auth_url(state: str) -> str:
-    logger.info("Using redirect_uri: %s", config.SPOTIFY_REDIRECT)
     params = {
         "client_id":     config.SPOTIFY_ID,
         "response_type": "code",
@@ -59,7 +90,6 @@ def get_auth_url(state: str) -> str:
 
 
 def exchange_code(code: str) -> dict:
-    """Échange le code OAuth contre access_token + refresh_token."""
     resp = requests.post(SPOTIFY_TOKEN_URL, data={
         "grant_type":   "authorization_code",
         "code":         code,
@@ -76,18 +106,13 @@ def _refresh_token(user_id: str, refresh_token: str) -> dict:
     }, auth=(config.SPOTIFY_ID, config.SPOTIFY_SECRET))
     resp.raise_for_status()
     data = resp.json()
-    # Spotify ne retourne pas toujours un nouveau refresh_token
     data.setdefault("refresh_token", refresh_token)
     return data
 
 
-# ---------------------------------------------------------------------------
-# Token storage
-# ---------------------------------------------------------------------------
-
 def save_token(user_id: str, token_data: dict):
     expires_at = int(time.time()) + token_data["expires_in"]
-    with _get_conn() as conn:
+    with _get_conn(DB_PATH) as conn:
         conn.execute("""
             INSERT INTO tokens (user_id, access_token, refresh_token, expires_at)
             VALUES (?, ?, ?, ?)
@@ -96,24 +121,15 @@ def save_token(user_id: str, token_data: dict):
                 refresh_token = excluded.refresh_token,
                 expires_at    = excluded.expires_at
         """, (user_id, token_data["access_token"], token_data["refresh_token"], expires_at))
-    logger.info("Token saved for user '%s'", user_id)
 
 
 def get_valid_token(user_id: str) -> Optional[str]:
-    """Retourne un access_token valide, rafraîchi si nécessaire."""
-    with _get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM tokens WHERE user_id = ?", (user_id,)
-        ).fetchone()
-
+    with _get_conn(DB_PATH) as conn:
+        row = conn.execute("SELECT * FROM tokens WHERE user_id = ?", (user_id,)).fetchone()
     if not row:
         return None
-
-    # Refresh si expiré dans moins de 60s
     if row["expires_at"] - time.time() < 60:
-        logger.info("Refreshing token for user '%s'", user_id)
         data = _refresh_token(user_id, row["refresh_token"])
         save_token(user_id, data)
         return data["access_token"]
-
     return row["access_token"]
