@@ -45,12 +45,14 @@ def init_db():
 # ---------------------------------------------------------------------------
 
 def get_auth_url(state: str) -> str:
+    logger.info("Using redirect_uri: %s", config.SPOTIFY_REDIRECT)
     params = {
         "client_id":     config.SPOTIFY_ID,
         "response_type": "code",
         "redirect_uri":  config.SPOTIFY_REDIRECT,
         "scope":         config.SPOTIFY_SCOPE,
         "state":         state,
+        "show_dialog":   "true",
     }
     query = "&".join(f"{k}={requests.utils.quote(str(v))}" for k, v in params.items())
     return f"{SPOTIFY_AUTH_URL}?{query}"
