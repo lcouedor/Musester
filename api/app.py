@@ -7,6 +7,7 @@ from flask_cors import CORS
 
 from routes import bp
 from services.auth import init_db
+import config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,4 +42,4 @@ def create_app() -> Flask:
 app = create_app()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001)
+    app.run(host='0.0.0.0', port=config.PORT)

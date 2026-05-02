@@ -46,7 +46,7 @@
       position: relative;
       z-index: 1;
       width: 100%;
-      max-width: 560px;
+      max-width: 600px;
       display: flex;
       flex-direction: column;
       gap: 32px;
@@ -62,7 +62,6 @@
       line-height: 1;
     }
     h1 span { color: var(--accent); }
-
     .version { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
 
     #status-bar {
@@ -149,14 +148,79 @@
     .btn:disabled { opacity: 0.35; cursor: not-allowed; }
     .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
+    /* Progress bar */
+    .progress-wrap {
+      height: 2px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 0.4s ease;
+    }
+    .progress-bar.indeterminate {
+      width: 40%;
+      animation: indeterminate 1.4s ease infinite;
+    }
+    @keyframes indeterminate {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+
+    /* Playlists list */
+    .playlist-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .playlist-item {
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .playlist-item .pi-name { font-size: 0.85rem; color: var(--text); }
+    .playlist-item .pi-meta { font-size: 0.72rem; color: var(--muted); display: flex; gap: 16px; }
+    .playlist-item .pi-prompt {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* History */
+    .history-list { display: flex; flex-direction: column; gap: 8px; }
+    .history-item {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .history-item .hi-left { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+    .history-item .hi-name { font-size: 0.82rem; color: var(--text); }
+    .history-item .hi-prompt {
+      font-size: 0.7rem; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .history-item .hi-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+    .history-item .hi-count { font-size: 0.78rem; color: var(--accent); }
+    .history-item .hi-date  { font-size: 0.68rem; color: var(--muted); }
+
+    /* Log */
     #log {
       border: 1px solid var(--border);
       background: var(--bg);
       padding: 16px;
       font-size: 0.75rem;
       line-height: 1.8;
-      min-height: 80px;
-      max-height: 320px;
+      min-height: 60px;
+      max-height: 260px;
       overflow-y: auto;
       color: var(--muted);
     }
@@ -178,6 +242,7 @@
 
     hr { border: none; border-top: 1px solid var(--border); }
     .hidden { display: none !important; }
+    .empty { font-size: 0.75rem; color: var(--muted); font-style: italic; }
   </style>
 </head>
 <body>
@@ -188,6 +253,7 @@
     <span class="version">v2</span>
   </header>
 
+  <!-- Status -->
   <div id="status-bar">
     <span class="dot"></span>
     <span id="status-text">Non connecté</span>
@@ -196,6 +262,7 @@
       onclick="logout()">Déconnexion</button>
   </div>
 
+  <!-- Login -->
   <div class="card" id="card-login">
     <span class="card-title">Connexion</span>
     <p style="font-size:0.8rem;color:var(--muted);line-height:1.6">
@@ -211,50 +278,83 @@
     </div>
   </div>
 
-  <div class="card hidden" id="card-actions">
-    <span class="card-title">Générer une playlist</span>
+  <!-- Actions -->
+  <div class="hidden" id="card-actions">
 
-    <label>
-      Playlist source (URL ou "liked")
-      <input type="text" id="source-id" placeholder="https://open.spotify.com/playlist/... ou liked" />
-    </label>
-    <label>
-      Nom de la nouvelle playlist
-      <input type="text" id="playlist-name" placeholder="Chill Soir" />
-    </label>
-    <label>
-      Description / prompt
-      <textarea id="playlist-prompt" rows="3" placeholder="Musiques calmes et introspectives pour la fin de soirée"></textarea>
-    </label>
-
-    <div class="btn-row">
-      <button class="btn btn-primary" id="btn-generate" onclick="generate()">Générer</button>
+    <!-- Generate -->
+    <div class="card">
+      <span class="card-title">Générer une playlist</span>
+      <label>
+        Playlist source (URL ou "liked")
+        <input type="text" id="source-id" placeholder="https://open.spotify.com/playlist/... ou liked" />
+      </label>
+      <label>
+        Nom de la nouvelle playlist
+        <input type="text" id="playlist-name" placeholder="Chill Soir" />
+      </label>
+      <label>
+        Description / prompt
+        <textarea id="playlist-prompt" rows="3" placeholder="Musiques calmes et introspectives pour la fin de soirée"></textarea>
+      </label>
+      <div class="progress-wrap hidden" id="gen-progress-wrap">
+        <div class="progress-bar indeterminate" id="gen-progress"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-generate" onclick="generate()">Générer</button>
+      </div>
     </div>
 
-    <hr />
-
-    <span class="card-title">Synchroniser</span>
-    <p style="font-size:0.78rem;color:var(--muted);line-height:1.6">
-      Met à jour toutes tes playlists <strong style="color:var(--text)">IA-</strong> :
-      ajoute les nouveaux morceaux de la source et supprime ceux qui n'y sont plus.
-    </p>
-    <label>
-      Playlist source (URL ou "liked")
-      <input type="text" id="sync-source-id" placeholder="https://open.spotify.com/playlist/... ou liked" />
-    </label>
-    <div class="btn-row">
-      <button class="btn btn-ghost" id="btn-sync" onclick="sync()">Synchroniser</button>
+    <!-- Sync -->
+    <div class="card" style="margin-top:0">
+      <span class="card-title">Synchroniser</span>
+      <p style="font-size:0.78rem;color:var(--muted);line-height:1.6">
+        Met à jour toutes tes playlists <strong style="color:var(--text)">IA-</strong> :
+        ajoute les nouveaux morceaux et supprime ceux qui ne sont plus dans la source.
+      </p>
+      <label>
+        Playlist source (URL ou "liked")
+        <input type="text" id="sync-source-id" placeholder="https://open.spotify.com/playlist/... ou liked" />
+      </label>
+      <div class="progress-wrap hidden" id="sync-progress-wrap">
+        <div class="progress-bar indeterminate" id="sync-progress"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btn-sync" onclick="sync()">Synchroniser</button>
+      </div>
     </div>
+
+    <!-- Playlists IA- -->
+    <div class="card" style="margin-top:0">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span class="card-title">Playlists générées</span>
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.7rem" onclick="loadPlaylists()">↻</button>
+      </div>
+      <div class="playlist-list" id="playlist-list">
+        <span class="empty">Chargement…</span>
+      </div>
+    </div>
+
+    <!-- Historique -->
+    <div class="card" style="margin-top:0">
+      <span class="card-title">Historique</span>
+      <div class="history-list" id="history-list">
+        <span class="empty">Chargement…</span>
+      </div>
+    </div>
+
   </div>
 
+  <!-- Log -->
   <div id="log"></div>
 
 </div>
 
 <script>
-  // Même origine — pas besoin de préfixer l'URL
   const API = ''
 
+  // -------------------------------------------------------------------------
+  // Log
+  // -------------------------------------------------------------------------
   function log(msg, type = 'info') {
     const el   = document.getElementById('log')
     const time = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'})
@@ -265,6 +365,9 @@
     el.scrollTop = el.scrollHeight
   }
 
+  // -------------------------------------------------------------------------
+  // Auth
+  // -------------------------------------------------------------------------
   async function checkAuth() {
     try {
       const res  = await fetch(`${API}/auth/me`)
@@ -274,9 +377,7 @@
       } else {
         setDisconnected()
       }
-    } catch {
-      setDisconnected()
-    }
+    } catch { setDisconnected() }
   }
 
   function setConnected(userId) {
@@ -285,6 +386,8 @@
     document.getElementById('card-login').classList.add('hidden')
     document.getElementById('card-actions').classList.remove('hidden')
     document.getElementById('btn-logout').classList.remove('hidden')
+    loadPlaylists()
+    loadHistory()
   }
 
   function setDisconnected() {
@@ -295,9 +398,7 @@
     document.getElementById('btn-logout').classList.add('hidden')
   }
 
-  function login() {
-    window.location.href = '/auth/login'
-  }
+  function login()  { window.location.href = '/auth/login' }
 
   async function logout() {
     await fetch(`${API}/auth/logout`)
@@ -305,6 +406,9 @@
     log('Déconnecté')
   }
 
+  // -------------------------------------------------------------------------
+  // Generate
+  // -------------------------------------------------------------------------
   async function generate() {
     const sourceId = document.getElementById('source-id').value.trim()
     const name     = document.getElementById('playlist-name').value.trim()
@@ -314,7 +418,8 @@
 
     const btn = document.getElementById('btn-generate')
     setLoading(btn, true)
-    log('Génération en cours…')
+    showProgress('gen-progress-wrap')
+    log('Génération en cours… (peut prendre 20-60s)')
 
     try {
       const res  = await fetch(`${API}/generate`, {
@@ -325,8 +430,10 @@
       const data = await res.json()
       if (res.ok) {
         const d = data.data
-        log(`✓ Playlist créée — ${d.selected_songs}/${d.checked_songs} morceaux (${data.execution_time})`, 'ok')
+        log(`✓ Playlist créée — ${d.selected_songs}/${d.checked_songs} morceaux (${d.execution_time})`, 'ok')
         log(`  ID : ${d.playlist_id}`, 'ok')
+        loadPlaylists()
+        loadHistory()
       } else {
         log(`✗ ${data.error}`, 'err')
       }
@@ -334,15 +441,20 @@
       log(`✗ Erreur réseau : ${e.message}`, 'err')
     } finally {
       setLoading(btn, false)
+      hideProgress('gen-progress-wrap')
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Sync
+  // -------------------------------------------------------------------------
   async function sync() {
     const sourceId = document.getElementById('sync-source-id').value.trim()
     if (!sourceId) { log('Renseigne la playlist source', 'err'); return }
 
     const btn = document.getElementById('btn-sync')
     setLoading(btn, true)
+    showProgress('sync-progress-wrap')
     log('Synchronisation en cours…')
 
     try {
@@ -359,6 +471,7 @@
         for (const v of Object.values(data.data)) {
           if (v.name) log(`  ${v.name} : +${v.added} / -${v.removed}`, 'ok')
         }
+        loadPlaylists()
       } else {
         log(`✗ ${data.error}`, 'err')
       }
@@ -366,9 +479,69 @@
       log(`✗ Erreur réseau : ${e.message}`, 'err')
     } finally {
       setLoading(btn, false)
+      hideProgress('sync-progress-wrap')
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Playlists
+  // -------------------------------------------------------------------------
+  async function loadPlaylists() {
+    const container = document.getElementById('playlist-list')
+    try {
+      const res  = await fetch(`${API}/playlists`)
+      const data = await res.json()
+      if (!res.ok || !data.data?.length) {
+        container.innerHTML = '<span class="empty">Aucune playlist générée</span>'
+        return
+      }
+      container.innerHTML = data.data.map(p => `
+        <div class="playlist-item">
+          <span class="pi-name">${p.name}</span>
+          <span class="pi-prompt">${p.prompt || '—'}</span>
+          <div class="pi-meta">
+            <span>${p.track_count} morceaux</span>
+            <span>sync : ${p.last_sync ? formatDate(p.last_sync) : 'jamais'}</span>
+          </div>
+        </div>
+      `).join('')
+    } catch {
+      container.innerHTML = '<span class="empty">Erreur de chargement</span>'
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // History
+  // -------------------------------------------------------------------------
+  async function loadHistory() {
+    const container = document.getElementById('history-list')
+    try {
+      const res  = await fetch(`${API}/history`)
+      const data = await res.json()
+      if (!res.ok || !data.data?.length) {
+        container.innerHTML = '<span class="empty">Aucune génération pour l\'instant</span>'
+        return
+      }
+      container.innerHTML = data.data.map(h => `
+        <div class="history-item">
+          <div class="hi-left">
+            <span class="hi-name">IA-${h.playlist_name}</span>
+            <span class="hi-prompt">${h.prompt}</span>
+          </div>
+          <div class="hi-right">
+            <span class="hi-count">${h.selected_songs}/${h.checked_songs}</span>
+            <span class="hi-date">${formatDate(h.created_at)}</span>
+          </div>
+        </div>
+      `).join('')
+    } catch {
+      container.innerHTML = '<span class="empty">Erreur de chargement</span>'
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------
   function setLoading(btn, loading) {
     btn.disabled = loading
     const s = btn.querySelector('.spin')
@@ -376,7 +549,15 @@
     if (!loading && s) s.remove()
   }
 
-  // Vérifier si on revient d'un callback Spotify
+  function showProgress(id) { document.getElementById(id).classList.remove('hidden') }
+  function hideProgress(id) { document.getElementById(id).classList.add('hidden') }
+
+  function formatDate(iso) {
+    if (!iso) return '—'
+    return new Date(iso).toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})
+  }
+
+  // Callback error
   const params = new URLSearchParams(window.location.search)
   if (params.get('error')) {
     log(`✗ Erreur Spotify : ${params.get('error')}`, 'err')
