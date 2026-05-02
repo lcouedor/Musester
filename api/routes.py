@@ -78,7 +78,7 @@ def login():
 def callback():
     error = request.args.get('error')
     if error:
-        return _err(f'Spotify auth error: {error}')
+        return redirect(f"{os.getenv('FRONTEND_URL')}?error={error}")
 
     state = request.args.get('state')
     if state != session.get('oauth_state'):
@@ -86,15 +86,12 @@ def callback():
 
     code       = request.args.get('code')
     token_data = exchange_code(code)
-
-    # Récupérer l'id utilisateur Spotify
-    user_id = SpotifyService.get_user_id(token_data['access_token'])
+    user_id    = SpotifyService.get_user_id(token_data['access_token'])
     save_token(user_id, token_data)
     session['user_id'] = user_id
 
     logger.info("User '%s' authenticated", user_id)
-    return jsonify({'error': None, 'data': {'message': f'Logged in as {user_id}'}})
-
+    return redirect(os.getenv('FRONTEND_URL'))
 
 @bp.route('/auth/logout')
 def logout():
@@ -106,7 +103,7 @@ def logout():
 # API routes
 # ---------------------------------------------------------------------------
 
-@bp.route('/generate', methods=['GET'])
+@bp.route('/generate', methods=['POST'])
 @require_auth
 def generate(access_token: str):
     body      = request.json or {}
@@ -134,3 +131,18 @@ def sync(access_token: str):
     start  = time.time()
     result = sync_all_playlists(access_token, _parse_id(source_id))
     return _ok(result, start)
+
+
+@bp.route('/auth/me')
+def me():
+    user_id = session.get('user_id')
+    if not user_id:
+        return _err('Not authenticated', 401)
+    return jsonify({'error': None, 'data': {'user_id': user_id}})
+
+
+@bp.route('/auth/login-url')
+def login_url():
+    state = secrets.token_urlsafe(16)
+    session['oauth_state'] = state
+    return jsonify({'error': None, 'data': {'url': get_auth_url(state)}})

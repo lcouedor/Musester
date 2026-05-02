@@ -2,7 +2,7 @@ import logging
 import os
 import secrets
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 from routes import bp
@@ -14,15 +14,24 @@ logging.basicConfig(
     datefmt='%H:%M:%S',
 )
 
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
+
 
 def create_app() -> Flask:
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder=FRONTEND_DIR)
     app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
-    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SECURE']   = False
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    CORS(app)
     app.register_blueprint(bp)
     init_db()
 
     @app.route('/')
+    def index():
+        return send_from_directory(FRONTEND_DIR, 'index.html')
+
+    @app.route('/api')
     def home():
         return jsonify({'error': None, 'data': {'message': 'Musester API is running'}})
 
@@ -32,13 +41,4 @@ def create_app() -> Flask:
 app = create_app()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
-
-
-def create_app() -> Flask:
-    app = Flask(__name__)
-    app.secret_key = os.getenv('SECRET_KEY')
-    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-    app.config['SESSION_COOKIE_SECURE'] = False
-    app.config['SESSION_COOKIE_HTTPONLY'] = True
-    ...
+    app.run(host='0.0.0.0', port=5001)
