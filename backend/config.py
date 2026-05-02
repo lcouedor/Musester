@@ -1,5 +1,5 @@
-playlistPrefix: str = "IA-"
-mode: str = "dev" # dev, prod
+playlist_prefix: str = "IA-"
+mode: str = "dev"  # dev, prod
 batch_size: int = 20
-# gptModel: str = "chatgpt-4o-latest"
-gptModel: str = "gpt-4.1"
+gpt_model: str = "gpt-4.1"
+max_workers: int = 5
