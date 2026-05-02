@@ -12,7 +12,10 @@ class Track:
 class Decision:
     id: str
     title: str
-    match: int
+    include: bool
+    reason: str = ""
 
     def __post_init__(self):
-        self.match = int(self.match)
+        # GPT peut retourner un string "true"/"false"
+        if isinstance(self.include, str):
+            self.include = self.include.lower() == "true"
