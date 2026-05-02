@@ -34,5 +34,5 @@ GPT_MODEL = "gpt-4.1"
 
 # Behaviour
 BATCH_SIZE       = 60
-MAX_WORKERS      = 3
+MAX_WORKERS      = 5
 PLAYLIST_PREFIX  = "IA-"
