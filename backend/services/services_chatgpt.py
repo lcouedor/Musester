@@ -48,7 +48,7 @@ def process_batch(preprompt, description, batch, batch_index, number_of_batches)
     
     return batch_result
 
-def decisionHandler_parallel(description, musicInfos, max_workers=3):
+def decision_handler_parallel(description, musicInfos, max_workers=3):
     global counter
     counter = itertools.count(1)
 
