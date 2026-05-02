@@ -11,22 +11,27 @@ import config
 logger = logging.getLogger(__name__)
 
 PREPROMPT = """
-You are a music classification assistant.
+You are a music curator building a cohesive playlist.
 
-You will receive:
-- A textual description of a musical mood, theme, or intent.
-- A list of songs, each with an ID, title, artist(s), and album.
+You will receive a listening context description and a list of songs.
+For each song, decide whether it belongs in this playlist.
 
-Your task:
-For each song, return a match percentage (0-100) representing how well it fits the description.
+Base your decision on:
+- Energy level and tempo
+- Mood and emotional tone
+- Genre and artist's typical style
+- Lyrical themes (if known)
+- How well it fits alongside other songs that match the description
 
-You can rely on: title, artist style, lyrics (if known), album context.
-If you don't know a song, return match: 0.
+Rules:
+- If you don't know the song, exclude it (include: false)
+- Be selective — a focused playlist is better than an exhaustive one
+- Provide a short reason (max 10 words) to justify your choice
 
 Respond ONLY with a JSON array, no extra text:
 [
-  {"id": "id1", "title": "title1", "match": 85},
-  {"id": "id2", "title": "title2", "match": 10}
+  {"id": "...", "title": "...", "include": true, "reason": "Downtempo, fits focused late-night work"},
+  {"id": "...", "title": "...", "include": false, "reason": "Too energetic, breaks the mood"}
 ]
 """
 
@@ -52,7 +57,7 @@ class ClassifierService:
                 for i, batch in enumerate(batches)
             }
             for future in as_completed(futures):
-                idx        = futures[future]
+                idx          = futures[future]
                 results[idx] = future.result()
 
         decisions = []
@@ -69,7 +74,7 @@ class ClassifierService:
         return decisions
 
     def _process_batch(self, description: str, batch: list[Track], idx: int, total: int) -> list[dict]:
-        prompt = f"Description: {description}\nSongs:\n"
+        prompt  = f"Listening context: {description}\nSongs:\n"
         prompt += "\n".join(
             f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
             for t in batch

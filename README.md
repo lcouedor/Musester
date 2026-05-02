@@ -32,3 +32,8 @@ Paramètres :
 # Déploiement
 -- Work in progress --
 > vercel --cwd backend to update prod
+
+
+python3 -m venv myenv        # une seule fois
+source myenv/bin/activate    # à chaque session
+pip install -r requirements.txt  # après un git pull

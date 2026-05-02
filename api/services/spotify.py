@@ -1,11 +1,29 @@
 import logging
+from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from core.models import Track
 import config
 
 logger = logging.getLogger(__name__)
+
+CREATED_SEPARATOR = "| created:"
+
+
+def _format_description(prompt: str) -> str:
+    ts = datetime.now(timezone.utc).isoformat()
+    return f"{prompt} {CREATED_SEPARATOR}{ts}"
+
+
+def _parse_description(raw: str) -> tuple[str, str | None]:
+    """Retourne (prompt_clean, created_at | None)"""
+    if CREATED_SEPARATOR not in raw:
+        return raw.strip(), None
+    prompt, _, meta = raw.partition(CREATED_SEPARATOR)
+    return prompt.strip(), meta.strip()
 
 
 class SpotifyService:
@@ -23,7 +41,7 @@ class SpotifyService:
         return self._client
 
     def get_tracks(self, playlist_id: str, extended: bool = False) -> list[Track]:
-        sp = self._get_client()
+        sp       = self._get_client()
         is_liked = playlist_id == "liked"
         limit    = 50 if is_liked else 100
 
@@ -61,10 +79,40 @@ class SpotifyService:
             added_at=item.get('added_at') if extended else None,
         )
 
-    def create_playlist(self, name: str, description: str, track_ids: list[str]) -> str:
+    def get_user_generated_playlists(self) -> list[dict]:
+        """Retourne toutes les playlists de l'utilisateur dont le nom commence par le préfixe IA-."""
         sp      = self._get_client()
         user_id = sp.current_user()['id']
-        playlist = sp.user_playlist_create(
+        results = sp.current_user_playlists(limit=50)
+        items   = list(results['items'])
+        while results['next']:
+            results = sp.next(results)
+            items.extend(results['items'])
+
+        generated = [
+            p for p in items
+            if p['owner']['id'] == user_id and p['name'].startswith(config.PLAYLIST_PREFIX)
+        ]
+        logger.info("Found %d generated playlists", len(generated))
+        return generated
+
+    def get_playlist_prompt(self, playlist_id: str) -> str:
+        """Retourne le prompt nettoyé (sans le timestamp) depuis la description."""
+        raw    = self._get_client().playlist(playlist_id)['description']
+        prompt, _ = _parse_description(raw)
+        return prompt
+
+    def get_playlist_created_at(self, playlist_id: str) -> str | None:
+        """Retourne le timestamp de création stocké dans la description, ou None."""
+        raw = self._get_client().playlist(playlist_id)['description']
+        _, created_at = _parse_description(raw)
+        return created_at
+
+    def create_playlist(self, name: str, prompt: str, track_ids: list[str]) -> str:
+        sp          = self._get_client()
+        user_id     = sp.current_user()['id']
+        description = _format_description(prompt)
+        playlist    = sp.user_playlist_create(
             user=user_id,
             name=config.PLAYLIST_PREFIX + name,
             public=False,
@@ -86,9 +134,6 @@ class SpotifyService:
                 items=track_ids[i:i+100],
             )
         logger.info("Removed %d tracks from '%s'", len(track_ids), playlist_id)
-
-    def get_playlist_description(self, playlist_id: str) -> str:
-        return self._get_client().playlist(playlist_id)['description']
 
     def _bulk_add(self, playlist_id: str, track_ids: list[str]):
         sp = self._get_client()

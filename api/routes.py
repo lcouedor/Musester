@@ -1,7 +1,7 @@
 import logging
 import time
 from flask import Blueprint, request, jsonify
-from core.playlist import generate_playlist, update_playlists, sync_playlists
+from core.playlist import generate_playlist, update_all_playlists, sync_all_playlists
 
 logger = logging.getLogger(__name__)
 bp     = Blueprint('api', __name__)
@@ -31,40 +31,36 @@ def generate():
     source_id = body.get('source_id')
     name      = body.get('playlist_name')
     prompt    = body.get('playlist_prompt')
-    threshold = body.get('treshold_match_percentage')
 
-    if not all([source_id, name, prompt, threshold is not None]):
-        return _err('Missing required parameters: source_id, playlist_name, playlist_prompt, treshold_match_percentage')
+    if not all([source_id, name, prompt]):
+        return _err('Missing required parameters: source_id, playlist_name, playlist_prompt')
 
-    start = time.time()
-    result = generate_playlist(_parse_id(source_id), name, prompt, threshold)
+    start  = time.time()
+    result = generate_playlist(_parse_id(source_id), name, prompt)
     return _ok(result, start)
 
 
 @bp.route('/update', methods=['GET'])
 def update():
-    body       = request.json or {}
-    source_id  = body.get('source_id')
-    target_ids = body.get('target_ids', [])
-    threshold  = body.get('treshold_match_percentage')
+    body      = request.json or {}
+    source_id = body.get('source_id')
 
-    if not all([source_id, target_ids, threshold is not None]):
-        return _err('Missing required parameters: source_id, target_ids, treshold_match_percentage')
+    if not source_id:
+        return _err('Missing required parameter: source_id')
 
     start  = time.time()
-    result = update_playlists(_parse_id(source_id), [_parse_id(i) for i in target_ids], threshold)
+    result = update_all_playlists(_parse_id(source_id))
     return _ok(result, start)
 
 
 @bp.route('/sync', methods=['DELETE'])
 def sync():
-    body       = request.json or {}
-    source_id  = body.get('source_id')
-    target_ids = body.get('target_ids', [])
+    body      = request.json or {}
+    source_id = body.get('source_id')
 
-    if not all([source_id, target_ids]):
-        return _err('Missing required parameters: source_id, target_ids')
+    if not source_id:
+        return _err('Missing required parameter: source_id')
 
     start  = time.time()
-    result = sync_playlists(_parse_id(source_id), [_parse_id(i) for i in target_ids])
+    result = sync_all_playlists(_parse_id(source_id))
     return _ok(result, start)
