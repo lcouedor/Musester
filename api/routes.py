@@ -1,7 +1,7 @@
 import logging
 import time
 from flask import Blueprint, request, jsonify
-from core.playlist import generate_playlist, update_all_playlists, sync_all_playlists
+from core.playlist import generate_playlist, sync_all_playlists
 
 logger = logging.getLogger(__name__)
 bp     = Blueprint('api', __name__)
@@ -40,20 +40,7 @@ def generate():
     return _ok(result, start)
 
 
-@bp.route('/update', methods=['GET'])
-def update():
-    body      = request.json or {}
-    source_id = body.get('source_id')
-
-    if not source_id:
-        return _err('Missing required parameter: source_id')
-
-    start  = time.time()
-    result = update_all_playlists(_parse_id(source_id))
-    return _ok(result, start)
-
-
-@bp.route('/sync', methods=['DELETE'])
+@bp.route('/sync', methods=['POST'])
 def sync():
     body      = request.json or {}
     source_id = body.get('source_id')
