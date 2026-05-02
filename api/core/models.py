@@ -13,3 +13,6 @@ class Decision:
     id: str
     title: str
     match: int
+
+    def __post_init__(self):
+        self.match = int(self.match)

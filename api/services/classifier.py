@@ -1,10 +1,14 @@
-from openai import OpenAI
+import json
+import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Semaphore
+
+from openai import OpenAI
 from core.models import Track, Decision
 import config
-import time
-import json
+
+logger = logging.getLogger(__name__)
 
 PREPROMPT = """
 You are a music classification assistant.
@@ -26,15 +30,20 @@ Respond ONLY with a JSON array, no extra text:
 ]
 """
 
+
 class ClassifierService:
-    def __init__(self):
-        self.client = OpenAI(api_key=config.GPT_KEY)
-        # Semaphore pour limiter le débit et éviter le rate limit
-        self._semaphore = Semaphore(config.MAX_WORKERS)
+    _instance = None
+
+    def __new__(cls):
+        if not cls._instance:
+            cls._instance = super().__new__(cls)
+            cls._instance._client    = OpenAI(api_key=config.GPT_KEY)
+            cls._instance._semaphore = Semaphore(config.MAX_WORKERS)
+        return cls._instance
 
     def classify(self, description: str, tracks: list[Track]) -> list[Decision]:
         batches = [tracks[i:i+config.BATCH_SIZE] for i in range(0, len(tracks), config.BATCH_SIZE)]
-        total = len(batches)
+        total   = len(batches)
         results = [None] * total
 
         with ThreadPoolExecutor(max_workers=config.MAX_WORKERS) as executor:
@@ -43,38 +52,49 @@ class ClassifierService:
                 for i, batch in enumerate(batches)
             }
             for future in as_completed(futures):
-                idx = futures[future]
+                idx        = futures[future]
                 results[idx] = future.result()
 
-        return [Decision(**d) for batch in results if batch for d in batch]
+        decisions = []
+        for batch in results:
+            if not batch:
+                continue
+            for d in batch:
+                try:
+                    decisions.append(Decision(**d))
+                except (TypeError, ValueError) as e:
+                    logger.warning("Skipping malformed decision %s: %s", d, e)
+
+        logger.info("Classification done: %d decisions", len(decisions))
+        return decisions
 
     def _process_batch(self, description: str, batch: list[Track], idx: int, total: int) -> list[dict]:
-        with self._semaphore:
-            prompt = f"Description: {description}\nSongs:\n"
-            prompt += "\n".join(
-                f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
-                for t in batch
-            )
+        prompt = f"Description: {description}\nSongs:\n"
+        prompt += "\n".join(
+            f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
+            for t in batch
+        )
 
+        with self._semaphore:
             for attempt in range(5):
                 try:
-                    response = self.client.chat.completions.create(
+                    response = self._client.chat.completions.create(
                         model=config.GPT_MODEL,
                         messages=[
                             {"role": "system", "content": PREPROMPT},
-                            {"role": "user", "content": prompt},
+                            {"role": "user",   "content": prompt},
                         ],
                     )
                     result = json.loads(response.choices[0].message.content)
-                    print(f"✅ Batch {idx+1}/{total} ({len(batch)} tracks)")
+                    logger.info("Batch %d/%d OK (%d tracks)", idx + 1, total, len(batch))
                     return result
-                except json.JSONDecodeError:
-                    print(f"⚠️ JSON error on batch {idx+1}, retry {attempt+1}")
+                except json.JSONDecodeError as e:
+                    logger.warning("Batch %d/%d — JSON parse error: %s", idx + 1, total, e)
                     time.sleep(1)
                 except Exception as e:
                     delay = 2 ** attempt
-                    print(f"⚠️ Error on batch {idx+1}: {e}. Retry in {delay}s")
+                    logger.warning("Batch %d/%d — API error: %s. Retry in %ds", idx + 1, total, e, delay)
                     time.sleep(delay)
 
-            print(f"❌ Batch {idx+1} failed after 5 attempts")
-            return []
+        logger.error("Batch %d/%d failed after 5 attempts", idx + 1, total)
+        return []
