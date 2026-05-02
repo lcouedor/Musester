@@ -1,17 +1,11 @@
 import os
-import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
-
 REQUIRED_ENV_VARS = [
-    'SPOTIFY_ID',
-    'SPOTIFY_SECRET',
-    'SPOTIFY_REDIRECT',
-    'SPOTIFY_USERNAME',
-    'GPT_KEY',
+    'SPOTIFY_ID', 'SPOTIFY_SECRET', 'SPOTIFY_REDIRECT',
+    'SPOTIFY_USERNAME', 'GPT_KEY',
 ]
 
 def _check_env():
@@ -33,6 +27,10 @@ GPT_KEY   = os.getenv('GPT_KEY')
 GPT_MODEL = "gpt-4.1"
 
 # Behaviour
-BATCH_SIZE       = 60
-MAX_WORKERS      = 5
-PLAYLIST_PREFIX  = "IA-"
+BATCH_SIZE      = 60
+MAX_WORKERS     = 3
+PLAYLIST_PREFIX = "IA-"
+
+# Server
+PORT         = int(os.getenv('PORT', 5001))
+FRONTEND_URL = os.getenv('FRONTEND_URL', f'http://127.0.0.1:{PORT}')
