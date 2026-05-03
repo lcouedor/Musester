@@ -23,35 +23,21 @@
     }
 
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--mono);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 60px 20px;
+      background: var(--bg); color: var(--text); font-family: var(--mono);
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; padding: 60px 20px;
     }
 
     body::before {
-      content: '';
-      position: fixed; inset: 0;
+      content: ''; position: fixed; inset: 0;
       background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
       pointer-events: none; z-index: 0;
     }
 
-    .wrap {
-      position: relative; z-index: 1;
-      width: 100%; max-width: 600px;
-      display: flex; flex-direction: column; gap: 32px;
-    }
+    .wrap { position: relative; z-index: 1; width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 32px; }
 
     header { display: flex; align-items: baseline; gap: 12px; }
-
-    h1 {
-      font-family: var(--display); font-size: 2.4rem;
-      font-weight: 800; letter-spacing: -0.03em; line-height: 1;
-    }
+    h1 { font-family: var(--display); font-size: 2.4rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
     h1 span { color: var(--accent); }
     .version { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
 
@@ -60,37 +46,28 @@
       padding: 12px 16px; border: 1px solid var(--border);
       background: var(--surface); font-size: 0.78rem; color: var(--muted);
     }
-    #status-bar .dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--muted); flex-shrink: 0; transition: background 0.3s;
-    }
+    #status-bar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background 0.3s; }
     #status-bar.connected .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
     #status-bar.connected      { color: var(--text); border-color: #1a3a25; }
 
-    .card {
-      border: 1px solid var(--border); background: var(--surface);
-      padding: 24px; display: flex; flex-direction: column; gap: 16px;
-    }
+    .card { border: 1px solid var(--border); background: var(--surface); padding: 24px; display: flex; flex-direction: column; gap: 16px; }
 
-    .card-title {
-      font-family: var(--display); font-size: 0.85rem; font-weight: 700;
-      letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
-    }
+    .card-title { font-family: var(--display); font-size: 0.85rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 
-    label {
-      display: flex; flex-direction: column; gap: 6px;
-      font-size: 0.72rem; color: var(--muted);
-      letter-spacing: 0.06em; text-transform: uppercase;
-    }
-
-    input, textarea {
+    /* Field */
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+    .field input, .field textarea {
       background: var(--bg); border: 1px solid var(--border);
       color: var(--text); font-family: var(--mono); font-size: 0.85rem;
       padding: 10px 12px; outline: none; transition: border-color 0.2s;
       width: 100%; resize: none;
     }
-    input:focus, textarea:focus { border-color: var(--accent); }
-    input::placeholder, textarea::placeholder { color: #333; }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); }
+    .field input::placeholder, .field textarea::placeholder { color: #333; }
+    .field.error input, .field.error textarea { border-color: var(--danger); }
+    .field-error { font-size: 0.7rem; color: var(--danger); display: none; }
+    .field.error .field-error { display: block; }
 
     .btn {
       font-family: var(--mono); font-size: 0.8rem; font-weight: 500;
@@ -109,73 +86,123 @@
     /* Progress */
     .progress-wrap { height: 2px; background: var(--border); overflow: hidden; }
     .progress-bar  { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease; }
-
-    /* Status line */
-    .status-line {
-      font-size: 0.75rem; color: var(--muted);
-      min-height: 1.2em; transition: color 0.2s;
-    }
+    .status-line   { font-size: 0.75rem; color: var(--muted); min-height: 1.2em; }
     .status-line.active { color: var(--text); }
+
+    /* Anchors */
+    .anchor-section { display: flex; flex-direction: column; gap: 10px; }
+    .anchor-hint { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
+    .anchor-hint strong { color: var(--text); }
+    .anchor-count { font-size: 0.72rem; color: var(--muted); }
+    .anchor-count .count-num { color: var(--accent); font-weight: 500; }
+    .anchor-count .count-num.warn { color: #e0a055; }
+    .anchor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+      gap: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 2px;
+    }
+    .anchor-card {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      cursor: pointer; padding: 4px; border: 1px solid transparent;
+      transition: border-color 0.15s; background: var(--bg);
+    }
+    .anchor-card:hover { border-color: var(--border); }
+    .anchor-card.selected { border-color: var(--accent); background: #0d1f14; }
+    .anchor-card img {
+      width: 64px; height: 64px; object-fit: cover; display: block;
+    }
+    .anchor-card .ac-title {
+      font-size: 0.62rem; color: var(--text); text-align: center;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;
+    }
+    .anchor-card .ac-artist {
+      font-size: 0.58rem; color: var(--muted); text-align: center;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;
+    }
+    .anchor-loading { font-size: 0.75rem; color: var(--muted); font-style: italic; }
+    .anchor-search {
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--mono); font-size: 0.82rem;
+      padding: 8px 10px; outline: none; width: 100%; transition: border-color 0.2s;
+    }
+    .anchor-search:focus { border-color: var(--accent); }
+    .anchor-search::placeholder { color: #333; }
+
+    .anchor-recap {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 8px 10px; border: 1px solid var(--border); background: var(--bg);
+    }
+    .anchor-recap.hidden-recap { display: none; }
+    .anchor-chip {
+      display: flex; align-items: center; gap: 5px;
+      background: #0d1f14; border: 1px solid var(--accent);
+      padding: 3px 7px 3px 4px; cursor: pointer;
+      font-family: var(--mono); font-size: 0.68rem; color: var(--text);
+      transition: background 0.15s;
+    }
+    .anchor-chip:hover { background: #122a1c; }
+    .anchor-chip img { width: 20px; height: 20px; object-fit: cover; flex-shrink: 0; }
+    .anchor-chip .chip-placeholder { width: 20px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .anchor-chip .chip-name { max-width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .anchor-chip .chip-x { color: var(--accent); font-size: 0.75rem; flex-shrink: 0; margin-left: 2px; }
+
+    /* Toggle */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-top: 1px solid var(--border);
+    }
+    .toggle-label { display: flex; flex-direction: column; gap: 2px; }
+    .toggle-label span { font-size: 0.78rem; color: var(--text); }
+    .toggle-label small { font-size: 0.68rem; color: var(--muted); }
+    .toggle-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0; background: var(--border);
+      cursor: pointer; transition: background 0.2s; border-radius: 20px;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 14px; height: 14px; left: 3px; top: 3px;
+      background: var(--muted); border-radius: 50%; transition: all 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: #1a3a25; }
+    .toggle-switch input:checked + .toggle-slider::before {
+      background: var(--accent); transform: translateX(16px);
+    }
 
     /* Playlists */
     .playlist-list { display: flex; flex-direction: column; gap: 10px; }
-    .playlist-item {
-      padding: 12px 14px; border: 1px solid var(--border);
-      background: var(--bg); display: flex; flex-direction: column; gap: 6px;
-    }
-    .playlist-item .pi-header {
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    }
-    .playlist-item .pi-name { font-size: 0.85rem; color: var(--text); }
-    .playlist-item .pi-meta { font-size: 0.72rem; color: var(--muted); display: flex; gap: 16px; }
-    .playlist-item .pi-prompt-wrap { display: flex; align-items: center; gap: 8px; }
-    .playlist-item .pi-prompt {
-      font-size: 0.72rem; color: var(--muted); font-style: italic;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
-    }
-    .pi-edit-wrap { display: none; flex-direction: column; gap: 8px; }
+    .playlist-item { padding: 12px 14px; border: 1px solid var(--border); background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
+    .playlist-item .pi-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .playlist-item .pi-name   { font-size: 0.85rem; color: var(--text); }
+    .playlist-item .pi-meta   { font-size: 0.72rem; color: var(--muted); display: flex; gap: 16px; }
+    .playlist-item .pi-prompt { font-size: 0.72rem; color: var(--muted); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pi-edit-wrap { display: none; flex-direction: column; gap: 8px; margin-top: 4px; }
     .pi-edit-wrap.open { display: flex; }
 
     /* History */
     .history-list { display: flex; flex-direction: column; gap: 8px; }
-    .history-item {
-      padding: 10px 14px; border: 1px solid var(--border); background: var(--bg);
-      display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
-    }
-    .history-item .hi-badge {
-      font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase;
-      padding: 2px 6px; border: 1px solid; flex-shrink: 0;
-    }
+    .history-item { padding: 10px 14px; border: 1px solid var(--border); background: var(--bg); display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .hi-badge { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border: 1px solid; flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
     .hi-badge.generate { color: var(--accent); border-color: var(--accent); }
     .hi-badge.sync     { color: var(--muted);  border-color: var(--border); }
-    .history-item .hi-left  { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-    .history-item .hi-name  { font-size: 0.82rem; color: var(--text); }
-    .history-item .hi-prompt {
-      font-size: 0.7rem; color: var(--muted);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .history-item .hi-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
-    .history-item .hi-count { font-size: 0.78rem; color: var(--accent); }
-    .history-item .hi-date  { font-size: 0.68rem; color: var(--muted); }
+    .hi-left  { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+    .hi-name  { font-size: 0.82rem; color: var(--text); }
+    .hi-prompt { font-size: 0.7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hi-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+    .hi-count { font-size: 0.78rem; color: var(--accent); }
+    .hi-date  { font-size: 0.68rem; color: var(--muted); }
 
     /* Log */
-    #log {
-      border: 1px solid var(--border); background: var(--bg);
-      padding: 16px; font-size: 0.75rem; line-height: 1.8;
-      min-height: 60px; max-height: 260px; overflow-y: auto; color: var(--muted);
-    }
+    #log { border: 1px solid var(--border); background: var(--bg); padding: 16px; font-size: 0.75rem; line-height: 1.8; min-height: 60px; max-height: 260px; overflow-y: auto; color: var(--muted); }
     #log .entry { display: flex; gap: 10px; }
     #log .entry .time { color: #333; flex-shrink: 0; }
     #log .entry.ok   .msg { color: var(--accent); }
     #log .entry.err  .msg { color: var(--danger); }
     #log .entry.info .msg { color: var(--text); }
-
-    .spin {
-      display: inline-block; width: 12px; height: 12px;
-      border: 2px solid currentColor; border-top-color: transparent;
-      border-radius: 50%; animation: spin 0.6s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
     hr { border: none; border-top: 1px solid var(--border); }
     .hidden { display: none !important; }
@@ -201,14 +228,10 @@
   <!-- Login -->
   <div class="card" id="card-login">
     <span class="card-title">Connexion</span>
-    <p style="font-size:0.8rem;color:var(--muted);line-height:1.6">
-      Connecte ton compte Spotify pour commencer à trier tes playlists.
-    </p>
+    <p style="font-size:0.8rem;color:var(--muted);line-height:1.6">Connecte ton compte Spotify pour commencer à trier tes playlists.</p>
     <div>
       <button class="btn btn-primary" onclick="login()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
         Se connecter avec Spotify
       </button>
     </div>
@@ -220,25 +243,71 @@
     <!-- Generate -->
     <div class="card">
       <span class="card-title">Générer une playlist</span>
-      <label>
-        Playlist source (URL ou "liked")
-        <input type="text" id="source-id" placeholder="https://open.spotify.com/playlist/... ou liked" />
-      </label>
-      <label>
-        Nom de la nouvelle playlist
-        <input type="text" id="playlist-name" placeholder="Chill Soir" />
-      </label>
-      <label>
-        Description / prompt
-        <textarea id="playlist-prompt" rows="3" placeholder="Musiques calmes et introspectives pour la fin de soirée"></textarea>
-      </label>
 
-      <!-- Loader generate -->
+      <div class="field" id="field-source">
+        <label>Playlist source (URL ou "liked")</label>
+        <input type="text" id="source-id" placeholder="https://open.spotify.com/playlist/... ou liked"
+          oninput="clearError('field-source'); resetAnchors()"
+          onblur="onSourceBlur()" />
+        <span class="field-error">Ce champ est requis</span>
+      </div>
+
+      <!-- Anchor picker (s'affiche après chargement de la source) -->
+      <div id="anchor-section" class="anchor-section hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <label style="font-size:0.72rem;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase">Anchors — morceaux de référence</label>
+          <span class="anchor-count"><span class="count-num" id="anchor-count-num">0</span> sélectionné(s)</span>
+        </div>
+        <p class="anchor-hint">
+          Sélectionne des morceaux qui correspondent <strong>exactement</strong> à ce que tu veux.
+          GPT s'en servira comme étalon pour les cas limites.
+          <strong>Recommandé : au moins 5.</strong>
+        </p>
+        <!-- Récap des anchors sélectionnés -->
+        <div id="anchor-recap" class="anchor-recap hidden-recap"></div>
+        <!-- Recherche -->
+        <input type="text" class="anchor-search" id="anchor-search"
+          placeholder="Rechercher un titre ou un artiste…"
+          oninput="filterAnchorGrid(this.value)" />
+        <div id="anchor-grid" class="anchor-grid">
+          <span class="anchor-loading">Chargement des morceaux…</span>
+        </div>
+      </div>
+
+      <div class="field" id="field-name">
+        <label>Nom de la nouvelle playlist</label>
+        <input type="text" id="playlist-name" placeholder="Chill Soir"
+          oninput="clearError('field-name')" />
+        <span class="field-error">Ce champ est requis</span>
+      </div>
+
+      <div class="field" id="field-prompt">
+        <label>Description / prompt</label>
+        <textarea id="playlist-prompt" rows="3" placeholder="Musiques calmes et introspectives pour la fin de soirée"
+          oninput="clearError('field-prompt')"></textarea>
+        <span class="field-error">Ce champ est requis</span>
+      </div>
+
+      <!-- Toggle multi-passe -->
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <span>Multi-passe</span>
+          <small>Passe 1 large → Passe 2 sélective. Améliore la qualité sur 500+ morceaux.</small>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-multipass" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
       <div id="gen-loader" class="hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span id="gen-phase-label" style="font-size:0.68rem;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase"></span>
+        </div>
         <div class="progress-wrap" style="margin-bottom:8px">
           <div class="progress-bar" id="gen-progress-bar"></div>
         </div>
-        <div class="status-line active" id="gen-status-line">Initialisation…</div>
+        <div class="status-line active" id="gen-status-line"></div>
       </div>
 
       <div class="btn-row">
@@ -253,17 +322,19 @@
         Met à jour toutes tes playlists <strong style="color:var(--text)">IA-</strong> :
         ajoute les nouveaux morceaux et supprime ceux qui ne sont plus dans la source.
       </p>
-      <label>
-        Playlist source (URL ou "liked")
-        <input type="text" id="sync-source-id" placeholder="https://open.spotify.com/playlist/... ou liked" />
-      </label>
 
-      <!-- Loader sync -->
+      <div class="field" id="field-sync-source">
+        <label>Playlist source (URL ou "liked")</label>
+        <input type="text" id="sync-source-id" placeholder="https://open.spotify.com/playlist/... ou liked"
+          oninput="clearError('field-sync-source')" />
+        <span class="field-error">Ce champ est requis</span>
+      </div>
+
       <div id="sync-loader" class="hidden">
         <div class="progress-wrap" style="margin-bottom:8px">
           <div class="progress-bar" id="sync-progress-bar"></div>
         </div>
-        <div class="status-line active" id="sync-status-line">Initialisation…</div>
+        <div class="status-line active" id="sync-status-line"></div>
       </div>
 
       <div class="btn-row">
@@ -313,17 +384,32 @@
   }
 
   // -------------------------------------------------------------------------
+  // Field validation
+  // -------------------------------------------------------------------------
+  function validateFields(fields) {
+    let valid = true
+    for (const { fieldId, value } of fields) {
+      if (!value) {
+        document.getElementById(fieldId).classList.add('error')
+        valid = false
+      }
+    }
+    return valid
+  }
+
+  function clearError(fieldId) {
+    document.getElementById(fieldId).classList.remove('error')
+  }
+
+  // -------------------------------------------------------------------------
   // Auth
   // -------------------------------------------------------------------------
   async function checkAuth() {
     try {
       const res  = await fetch(`${API}/auth/me`)
       const data = await res.json()
-      if (res.ok && data.data?.user_id) {
-        setConnected(data.data.user_id)
-      } else {
-        setDisconnected()
-      }
+      if (res.ok && data.data?.user_id) setConnected(data.data.user_id)
+      else setDisconnected()
     } catch { setDisconnected() }
   }
 
@@ -357,7 +443,6 @@
   // SSE helper
   // -------------------------------------------------------------------------
   function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onError }) {
-    // On utilise fetch + ReadableStream pour envoyer un body en POST avec SSE
     fetch(url, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -376,7 +461,6 @@
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
-
         const lines = buffer.split('\n')
         buffer = lines.pop()
 
@@ -385,7 +469,7 @@
           try {
             const event = JSON.parse(line.slice(6))
             if (event.kind === 'status'        && onStatus)       onStatus(event.message)
-            if (event.kind === 'progress'      && onProgress)     onProgress(event.done, event.total)
+            if (event.kind === 'progress'      && onProgress)     onProgress(event.done, event.total, event.phase)
             if (event.kind === 'playlist_done' && onPlaylistDone) onPlaylistDone(event)
             if (event.kind === 'done'          && onDone)         onDone(event)
           } catch {}
@@ -395,50 +479,188 @@
   }
 
   // -------------------------------------------------------------------------
+  // Anchors
+  // -------------------------------------------------------------------------
+  const _selectedAnchors = new Map() // id -> { id, title, artists }
+  let   _anchorLoadedFor = ''        // source value last loaded
+
+  function resetAnchors() {
+    _selectedAnchors.clear()
+    _anchorLoadedFor = ''
+    _anchorTracks    = []
+    document.getElementById('anchor-section').classList.add('hidden')
+    document.getElementById('anchor-count-num').textContent = '0'
+    document.getElementById('anchor-search').value = ''
+    document.getElementById('anchor-grid').innerHTML = '<span class="anchor-loading">Chargement des morceaux…</span>'
+    document.getElementById('anchor-recap').className = 'anchor-recap hidden-recap'
+    document.getElementById('anchor-recap').innerHTML = ''
+  }
+
+  async function onSourceBlur() {
+    const source = document.getElementById('source-id').value.trim()
+    if (!source || source === _anchorLoadedFor) return
+    _anchorLoadedFor = source
+
+    _selectedAnchors.clear()
+    _anchorTracks = []
+    document.getElementById('anchor-count-num').textContent = '0'
+    document.getElementById('anchor-search').value = ''
+    document.getElementById('anchor-recap').className = 'anchor-recap hidden-recap'
+    document.getElementById('anchor-recap').innerHTML = ''
+    document.getElementById('anchor-section').classList.remove('hidden')
+    document.getElementById('anchor-grid').innerHTML = '<span class="anchor-loading">Chargement des morceaux…</span>'
+
+    try {
+      const res  = await fetch(`${API}/source-tracks?source_id=${encodeURIComponent(source)}`)
+      const data = await res.json()
+      if (!res.ok || !data.data?.length) {
+        document.getElementById('anchor-grid').innerHTML = '<span class="anchor-loading">Aucun morceau trouvé</span>'
+        return
+      }
+      _anchorTracks = data.data
+      renderAnchorGrid(_anchorTracks)
+    } catch (e) {
+      document.getElementById('anchor-grid').innerHTML = '<span class="anchor-loading">Erreur de chargement</span>'
+    }
+  }
+
+  let _anchorTracks = []
+
+  function _buildCard(t) {
+    const card = document.createElement('div')
+    card.className = 'anchor-card' + (_selectedAnchors.has(t.id) ? ' selected' : '')
+    card.id = `ac-${t.id}`
+    card.innerHTML = t.cover_url
+      ? `<img src="${t.cover_url}" alt="" loading="lazy" />`
+      : `<div style="width:64px;height:64px;background:var(--border)"></div>`
+    card.innerHTML += `<span class="ac-title" title="${t.title}">${t.title}</span>`
+    card.innerHTML += `<span class="ac-artist" title="${t.artists}">${t.artists}</span>`
+    card.addEventListener('click', () => toggleAnchor(t))
+    return card
+  }
+
+  function renderAnchorGrid(tracks) {
+    const grid = document.getElementById('anchor-grid')
+    grid.innerHTML = ''
+    if (!tracks.length) {
+      grid.innerHTML = '<span class="anchor-loading">Aucun résultat</span>'
+      return
+    }
+    tracks.forEach(t => grid.appendChild(_buildCard(t)))
+  }
+
+  function filterAnchorGrid(query) {
+    const q = query.trim().toLowerCase()
+    const filtered = q
+      ? _anchorTracks.filter(t =>
+          t.title.toLowerCase().includes(q) || t.artists.toLowerCase().includes(q)
+        )
+      : _anchorTracks
+    renderAnchorGrid(filtered)
+  }
+
+  function toggleAnchor(t) {
+    if (_selectedAnchors.has(t.id)) {
+      _selectedAnchors.delete(t.id)
+    } else {
+      _selectedAnchors.set(t.id, { id: t.id, title: t.title, artists: t.artists })
+    }
+    // Sync card state (may not be in DOM if filtered out)
+    const card = document.getElementById(`ac-${t.id}`)
+    if (card) card.classList.toggle('selected', _selectedAnchors.has(t.id))
+
+    _updateAnchorMeta()
+    _renderRecap()
+  }
+
+  function _updateAnchorMeta() {
+    const n   = _selectedAnchors.size
+    const cnt = document.getElementById('anchor-count-num')
+    cnt.textContent = n
+    cnt.className   = 'count-num' + (n > 0 && n < 5 ? ' warn' : '')
+  }
+
+  function _renderRecap() {
+    const recap = document.getElementById('anchor-recap')
+    if (_selectedAnchors.size === 0) {
+      recap.className = 'anchor-recap hidden-recap'
+      recap.innerHTML = ''
+      return
+    }
+    recap.className = 'anchor-recap'
+    recap.innerHTML = ''
+    for (const t of _selectedAnchors.values()) {
+      const chip = document.createElement('div')
+      chip.className = 'anchor-chip'
+      chip.title = `${t.title} — ${t.artists}`
+      const trackData = _anchorTracks.find(a => a.id === t.id)
+      chip.innerHTML = trackData?.cover_url
+        ? `<img src="${trackData.cover_url}" alt="" />`
+        : `<div class="chip-placeholder"></div>`
+      chip.innerHTML += `<span class="chip-name">${t.title}</span>`
+      chip.innerHTML += `<span class="chip-x">×</span>`
+      chip.addEventListener('click', () => toggleAnchor(t))
+      recap.appendChild(chip)
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Generate
   // -------------------------------------------------------------------------
   function generate() {
-    const sourceId = document.getElementById('source-id').value.trim()
-    const name     = document.getElementById('playlist-name').value.trim()
-    const prompt   = document.getElementById('playlist-prompt').value.trim()
+    const sourceId   = document.getElementById('source-id').value.trim()
+    const name       = document.getElementById('playlist-name').value.trim()
+    const prompt     = document.getElementById('playlist-prompt').value.trim()
+    const multiPass  = document.getElementById('toggle-multipass').checked
+    const anchors    = Array.from(_selectedAnchors.values())
 
-    if (!sourceId || !name || !prompt) { log('Remplis tous les champs', 'err'); return }
+    const valid = validateFields([
+      { fieldId: 'field-source', value: sourceId },
+      { fieldId: 'field-name',   value: name },
+      { fieldId: 'field-prompt', value: prompt },
+    ])
+    if (!valid) return
 
     const btn        = document.getElementById('btn-generate')
     const loader     = document.getElementById('gen-loader')
     const progressEl = document.getElementById('gen-progress-bar')
     const statusEl   = document.getElementById('gen-status-line')
+    const phaseEl    = document.getElementById('gen-phase-label')
 
     btn.disabled = true
     loader.classList.remove('hidden')
     progressEl.style.width = '0%'
+    statusEl.textContent   = 'Initialisation…'
+    phaseEl.textContent    = ''
 
     runSSE({
       url:  `${API}/generate`,
-      body: { source_id: sourceId, playlist_name: name, playlist_prompt: prompt },
-
-      onStatus: msg => {
-        statusEl.textContent = msg
-        log(msg)
+      body: {
+        source_id:      sourceId,
+        playlist_name:  name,
+        playlist_prompt: prompt,
+        anchors,
+        multi_pass: multiPass,
       },
 
-      onProgress: (done, total) => {
-        const pct = total > 0 ? Math.round((done / total) * 100) : 0
-        progressEl.style.width = pct + '%'
-        statusEl.textContent = `Analyse — batch ${done}/${total}…`
+      onStatus: msg => { statusEl.textContent = msg; log(msg) },
+
+      onProgress: (done, total, phase) => {
+        progressEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
+        if (phase === 1) phaseEl.textContent = 'Passe 1 — filtrage large'
+        else if (phase === 2) phaseEl.textContent = 'Passe 2 — sélection fine'
+        else phaseEl.textContent = ''
       },
 
       onDone: data => {
         progressEl.style.width = '100%'
-        statusEl.textContent = `✓ Terminé`
+        statusEl.textContent   = '✓ Terminé'
+        phaseEl.textContent    = ''
         log(`✓ Playlist créée — ${data.selected_songs}/${data.checked_songs} morceaux retenus`, 'ok')
         log(`  ID : ${data.playlist_id}`, 'ok')
         loadPlaylists()
         loadHistory()
-        setTimeout(() => {
-          loader.classList.add('hidden')
-          btn.disabled = false
-        }, 1500)
+        setTimeout(() => { loader.classList.add('hidden'); btn.disabled = false }, 1500)
       },
 
       onError: err => {
@@ -454,7 +676,11 @@
   // -------------------------------------------------------------------------
   function sync() {
     const sourceId = document.getElementById('sync-source-id').value.trim()
-    if (!sourceId) { log('Renseigne la playlist source', 'err'); return }
+
+    const valid = validateFields([
+      { fieldId: 'field-sync-source', value: sourceId },
+    ])
+    if (!valid) return
 
     const btn        = document.getElementById('btn-sync')
     const loader     = document.getElementById('sync-loader')
@@ -464,38 +690,30 @@
     btn.disabled = true
     loader.classList.remove('hidden')
     progressEl.style.width = '0%'
+    statusEl.textContent   = 'Initialisation…'
 
     runSSE({
       url:  `${API}/sync`,
       body: { source_id: sourceId },
 
-      onStatus: msg => {
-        statusEl.textContent = msg
-        log(msg)
-      },
+      onStatus: msg => { statusEl.textContent = msg; log(msg) },
 
       onProgress: (done, total) => {
-        const pct = total > 0 ? Math.round((done / total) * 100) : 0
-        progressEl.style.width = pct + '%'
+        progressEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
       },
 
-      onPlaylistDone: v => {
-        log(`  ${v.name} : +${v.added} / -${v.removed}`, 'ok')
-      },
+      onPlaylistDone: v => { log(`  ${v.name} : +${v.added} / -${v.removed}`, 'ok') },
 
       onDone: data => {
         progressEl.style.width = '100%'
-        statusEl.textContent = '✓ Synchronisation terminée'
+        statusEl.textContent   = '✓ Synchronisation terminée'
         const results = data.results || {}
         let added = 0, removed = 0
         for (const v of Object.values(results)) { added += v.added||0; removed += v.removed||0 }
         log(`✓ Sync terminée — +${added} / -${removed} morceaux`, 'ok')
         loadPlaylists()
         loadHistory()
-        setTimeout(() => {
-          loader.classList.add('hidden')
-          btn.disabled = false
-        }, 1500)
+        setTimeout(() => { loader.classList.add('hidden'); btn.disabled = false }, 1500)
       },
 
       onError: err => {
@@ -524,16 +742,17 @@
             <span class="pi-name">${p.name}</span>
             <button class="btn btn-ghost btn-sm" onclick="toggleEditPrompt('${p.id}')">✎</button>
           </div>
-          <div class="pi-prompt-wrap">
-            <span class="pi-prompt" id="pi-prompt-${p.id}">${p.prompt || '—'}</span>
-          </div>
+          <span class="pi-prompt" id="pi-prompt-${p.id}">${p.prompt || '—'}</span>
           <div class="pi-meta">
             <span>${p.track_count} morceaux</span>
             <span>sync : ${p.last_sync ? formatDate(p.last_sync) : 'jamais'}</span>
           </div>
-          <!-- Edit prompt inline -->
           <div class="pi-edit-wrap" id="pi-edit-${p.id}">
-            <textarea rows="2" id="pi-input-${p.id}" style="font-size:0.8rem">${p.prompt || ''}</textarea>
+            <div class="field" id="pi-field-${p.id}">
+              <label>Nouveau prompt</label>
+              <textarea rows="2" id="pi-input-${p.id}" style="font-size:0.8rem">${p.prompt || ''}</textarea>
+              <span class="field-error">Le prompt ne peut pas être vide</span>
+            </div>
             <div class="btn-row">
               <button class="btn btn-primary btn-sm" onclick="savePrompt('${p.id}')">Sauvegarder</button>
               <button class="btn btn-ghost btn-sm" onclick="toggleEditPrompt('${p.id}')">Annuler</button>
@@ -546,28 +765,32 @@
     }
   }
 
-  function toggleEditPrompt(playlistId) {
-    const wrap = document.getElementById(`pi-edit-${playlistId}`)
-    wrap.classList.toggle('open')
+  function toggleEditPrompt(id) {
+    document.getElementById(`pi-edit-${id}`).classList.toggle('open')
+    document.getElementById(`pi-field-${id}`).classList.remove('error')
   }
 
-  async function savePrompt(playlistId) {
-    const input = document.getElementById(`pi-input-${playlistId}`)
+  async function savePrompt(id) {
+    const input  = document.getElementById(`pi-input-${id}`)
     const prompt = input.value.trim()
-    if (!prompt) return
+
+    if (!prompt) {
+      document.getElementById(`pi-field-${id}`).classList.add('error')
+      return
+    }
 
     try {
-      const res  = await fetch(`${API}/playlists/${playlistId}/prompt`, {
+      const res = await fetch(`${API}/playlists/${id}/prompt`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ prompt }),
       })
       if (res.ok) {
-        document.getElementById(`pi-prompt-${playlistId}`).textContent = prompt
-        toggleEditPrompt(playlistId)
-        log(`✓ Prompt mis à jour`, 'ok')
+        document.getElementById(`pi-prompt-${id}`).textContent = prompt
+        toggleEditPrompt(id)
+        log('✓ Prompt mis à jour', 'ok')
       } else {
-        log(`✗ Erreur lors de la mise à jour du prompt`, 'err')
+        log('✗ Erreur lors de la mise à jour du prompt', 'err')
       }
     } catch (e) {
       log(`✗ ${e.message}`, 'err')
@@ -587,27 +810,24 @@
         return
       }
       container.innerHTML = data.data.map(h => {
-        const isGenerate = h.action === 'generate'
-        const name       = h.playlist_name || h.playlist_id || '—'
-        const count      = isGenerate
+        const isGen  = h.action === 'generate'
+        const name   = h.playlist_name || h.playlist_id || '—'
+        const count  = isGen
           ? `${h.selected_songs}/${h.checked_songs}`
-          : `+${h.selected_songs || 0} / -${h.removed_songs || 0}`
-        const detail     = isGenerate
-          ? (h.prompt || '')
-          : `sync — ${h.checked_songs || 0} vérifiés`
+          : `+${h.selected_songs||0} / -${h.removed_songs||0}`
+        const detail = isGen ? (h.prompt || '') : `sync — ${h.checked_songs||0} vérifiés`
         return `
           <div class="history-item">
             <span class="hi-badge ${h.action}">${h.action}</span>
             <div class="hi-left">
-              <span class="hi-name">${isGenerate ? 'IA-' : ''}${name}</span>
+              <span class="hi-name">${isGen ? 'IA-' : ''}${name}</span>
               <span class="hi-prompt">${detail}</span>
             </div>
             <div class="hi-right">
               <span class="hi-count">${count}</span>
               <span class="hi-date">${formatDate(h.created_at)}</span>
             </div>
-          </div>
-        `
+          </div>`
       }).join('')
     } catch {
       container.innerHTML = '<span class="empty">Erreur de chargement</span>'
@@ -619,10 +839,7 @@
   // -------------------------------------------------------------------------
   function formatDate(iso) {
     if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('fr-FR', {
-      day:'2-digit', month:'2-digit', year:'numeric',
-      hour:'2-digit', minute:'2-digit'
-    })
+    return new Date(iso).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
   }
 
   const params = new URLSearchParams(window.location.search)

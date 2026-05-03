@@ -1,8 +1,6 @@
 import json
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Semaphore
 from typing import Callable, Optional
 
 from openai import OpenAI
@@ -31,8 +29,44 @@ Rules:
 
 Respond ONLY with a JSON array, no extra text:
 [
-  {"id": "...", "title": "...", "include": true, "reason": "Downtempo, fits focused late-night work"},
+  {"id": "...", "title": "...", "include": true,  "reason": "Downtempo, fits focused late-night work"},
   {"id": "...", "title": "...", "include": false, "reason": "Too energetic, breaks the mood"}
+]
+"""
+
+PREPROMPT_PASS1 = """
+You are doing a broad first-pass filter for a music playlist.
+
+Be INCLUSIVE: include a song if there is any reasonable chance it could fit the listening context.
+Only exclude songs that are clearly and obviously incompatible with the mood described.
+
+Rules:
+- If you don't know the song, exclude it (include: false)
+- When in doubt, include it — the goal is to keep candidates, not miss them
+- Provide a short reason (max 10 words) to justify your choice
+
+Respond ONLY with a JSON array, no extra text:
+[
+  {"id": "...", "title": "...", "include": true,  "reason": "Could fit the mood"},
+  {"id": "...", "title": "...", "include": false, "reason": "Clearly incompatible energy"}
+]
+"""
+
+PREPROMPT_PASS2 = """
+You are a music curator doing a final, selective pass on pre-filtered candidates.
+
+These songs have already passed a broad first filter — they are plausible candidates.
+Now be SELECTIVE: only include songs that genuinely and strongly match the listening context.
+Reject borderline cases. A focused playlist is better than an exhaustive one.
+
+Rules:
+- If you don't know the song, exclude it (include: false)
+- Provide a short reason (max 10 words) to justify your choice
+
+Respond ONLY with a JSON array, no extra text:
+[
+  {"id": "...", "title": "...", "include": true,  "reason": "Perfect fit for the described mood"},
+  {"id": "...", "title": "...", "include": false, "reason": "Too generic, doesn't commit to the vibe"}
 ]
 """
 
@@ -43,72 +77,56 @@ class ClassifierService:
     def __new__(cls):
         if not cls._instance:
             cls._instance = super().__new__(cls)
-            cls._instance._client    = OpenAI(api_key=config.GPT_KEY)
-            cls._instance._semaphore = Semaphore(config.MAX_WORKERS)
+            cls._instance._client = OpenAI(api_key=config.GPT_KEY)
         return cls._instance
 
-    def classify(
+    def _process_batch(
         self,
         description: str,
-        tracks: list[Track],
-        on_batch_done: Optional[Callable[[int, int], None]] = None,
-    ) -> list[Decision]:
-        batches = [tracks[i:i+config.BATCH_SIZE] for i in range(0, len(tracks), config.BATCH_SIZE)]
-        total   = len(batches)
-        results = [None] * total
+        batch: list[Track],
+        idx: int,
+        total: int,
+        preprompt: str = None,
+        anchors: list[Track] = None,
+    ) -> list[dict]:
+        if preprompt is None:
+            preprompt = PREPROMPT
 
-        with ThreadPoolExecutor(max_workers=config.MAX_WORKERS) as executor:
-            futures = {
-                executor.submit(self._process_batch, description, batch, i, total): i
-                for i, batch in enumerate(batches)
-            }
-            for future in as_completed(futures):
-                idx          = futures[future]
-                results[idx] = future.result()
-                if on_batch_done:
-                    done = sum(1 for r in results if r is not None)
-                    on_batch_done(done, total)
+        prompt = f"Listening context: {description}\n"
 
-        decisions = []
-        for batch in results:
-            if not batch:
-                continue
-            for d in batch:
-                try:
-                    decisions.append(Decision(**d))
-                except (TypeError, ValueError) as e:
-                    logger.warning("Skipping malformed decision %s: %s", d, e)
+        if anchors:
+            prompt += "\nReference examples (these songs MUST fit — use them to calibrate your judgment for edge cases):\n"
+            prompt += "\n".join(
+                f'- "{a.title}" by {a.artists}'
+                for a in anchors
+            )
+            prompt += "\n"
 
-        logger.info("Classification done: %d decisions", len(decisions))
-        return decisions
-
-    def _process_batch(self, description: str, batch: list[Track], idx: int, total: int) -> list[dict]:
-        prompt  = f"Listening context: {description}\nSongs:\n"
+        prompt += "\nSongs to evaluate:\n"
         prompt += "\n".join(
             f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
             for t in batch
         )
 
-        with self._semaphore:
-            for attempt in range(5):
-                try:
-                    response = self._client.chat.completions.create(
-                        model=config.GPT_MODEL,
-                        messages=[
-                            {"role": "system", "content": PREPROMPT},
-                            {"role": "user",   "content": prompt},
-                        ],
-                    )
-                    result = json.loads(response.choices[0].message.content)
-                    logger.info("Batch %d/%d OK (%d tracks)", idx + 1, total, len(batch))
-                    return result
-                except json.JSONDecodeError as e:
-                    logger.warning("Batch %d/%d — JSON parse error: %s", idx + 1, total, e)
-                    time.sleep(1)
-                except Exception as e:
-                    delay = 2 ** attempt
-                    logger.warning("Batch %d/%d — API error: %s. Retry in %ds", idx + 1, total, e, delay)
-                    time.sleep(delay)
+        for attempt in range(5):
+            try:
+                response = self._client.chat.completions.create(
+                    model=config.GPT_MODEL,
+                    messages=[
+                        {"role": "system", "content": preprompt},
+                        {"role": "user",   "content": prompt},
+                    ],
+                )
+                result = json.loads(response.choices[0].message.content)
+                logger.info("Batch %d/%d OK (%d tracks)", idx + 1, total, len(batch))
+                return result
+            except json.JSONDecodeError as e:
+                logger.warning("Batch %d/%d — JSON parse error: %s", idx + 1, total, e)
+                time.sleep(1)
+            except Exception as e:
+                delay = 2 ** attempt
+                logger.warning("Batch %d/%d — API error: %s. Retry in %ds", idx + 1, total, e, delay)
+                time.sleep(delay)
 
         logger.error("Batch %d/%d failed after 5 attempts", idx + 1, total)
         return []

@@ -123,10 +123,12 @@ def me():
 @bp.route('/generate', methods=['POST'])
 @require_auth
 def generate(access_token: str):
-    body      = request.json or {}
-    source_id = body.get('source_id')
-    name      = body.get('playlist_name')
-    prompt    = body.get('playlist_prompt')
+    body       = request.json or {}
+    source_id  = body.get('source_id')
+    name       = body.get('playlist_name')
+    prompt     = body.get('playlist_prompt')
+    anchors    = body.get('anchors', [])
+    multi_pass = body.get('multi_pass', True)
 
     if not all([source_id, name, prompt]):
         return _err('Missing required parameters: source_id, playlist_name, playlist_prompt')
@@ -136,7 +138,10 @@ def generate(access_token: str):
 
     def stream():
         result = {}
-        for event in generate_playlist_stream(access_token, _parse_id(source_id), name, prompt, user_id):
+        for event in generate_playlist_stream(
+            access_token, _parse_id(source_id), name, prompt, user_id,
+            anchors=anchors, multi_pass=multi_pass,
+        ):
             yield event
             # Récupérer les données du dernier event 'done'
             import json as _json
@@ -203,6 +208,27 @@ def sync(access_token: str):
             'X-Accel-Buffering': 'no',
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Source tracks (for anchor picker)
+# ---------------------------------------------------------------------------
+
+@bp.route('/source-tracks', methods=['GET'])
+@require_auth
+def source_tracks(access_token: str):
+    source_id = request.args.get('source_id', '').strip()
+    if not source_id:
+        return _err('Missing required parameter: source_id')
+
+    spotify = SpotifyService(access_token)
+    tracks  = spotify.get_tracks(_parse_id(source_id))
+    return _ok([{
+        'id':        t.id,
+        'title':     t.title,
+        'artists':   t.artists,
+        'cover_url': t.cover_url,
+    } for t in tracks])
 
 
 # ---------------------------------------------------------------------------

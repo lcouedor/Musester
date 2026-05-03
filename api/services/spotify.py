@@ -51,12 +51,15 @@ class SpotifyService:
 
     def _parse_track(self, item: dict, extended: bool) -> Track:
         t = item['track']
+        images = t['album'].get('images', [])
+        cover_url = images[0]['url'] if images else None
         return Track(
             id=t['id'],
             title=t['name'],
             artists='-'.join(a['name'] for a in t['artists']),
             album=t['album']['name'],
             added_at=item.get('added_at') if extended else None,
+            cover_url=cover_url,
         )
 
     def get_user_generated_playlists(self) -> list:

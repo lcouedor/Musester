@@ -5,7 +5,7 @@ from typing import Generator
 
 from core.models import Track, Decision
 from services.spotify import SpotifyService
-from services.classifier import ClassifierService
+from services.classifier import ClassifierService, PREPROMPT, PREPROMPT_PASS1, PREPROMPT_PASS2
 from services.auth import save_playlist_prompt, get_playlist_prompt
 
 logger      = logging.getLogger(__name__)
@@ -26,33 +26,106 @@ def generate_playlist_stream(
     playlist_name: str,
     prompt: str,
     user_id: str,
+    anchors: list[dict] = None,
+    multi_pass: bool = True,
 ) -> Generator[str, None, None]:
+
+    import config as _cfg
 
     spotify = SpotifyService(access_token)
 
     yield _event('status', message='Récupération des morceaux…')
-    tracks = spotify.get_tracks(source_id)
-    total_batches = -(-len(tracks) // __import__('config').BATCH_SIZE)
-    yield _event('status', message=f'{len(tracks)} morceaux trouvés — {total_batches} batch(s) à analyser')
-    yield _event('progress', done=0, total=total_batches)
+    tracks    = spotify.get_tracks(source_id)
+    track_map = {t.id: t for t in tracks}
 
-    completed = {'n': 0}
+    anchor_tracks: list[Track] = []
+    if anchors:
+        for a in anchors:
+            t = track_map.get(a.get('id'))
+            if t:
+                anchor_tracks.append(t)
+            else:
+                anchor_tracks.append(Track(
+                    id=a.get('id', ''),
+                    title=a.get('title', ''),
+                    artists=a.get('artists', ''),
+                    album='',
+                ))
 
-    def on_batch_done(done: int, total: int):
-        completed['n'] = done
+    decisions: list[Decision] = []
 
-    decisions = _classifier.classify(prompt, tracks, on_batch_done=on_batch_done)
+    if multi_pass:
+        # --- Pass 1 : broad filter ---
+        pass1_batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
+        total_p1      = len(pass1_batches)
 
-    yield _event('progress', done=total_batches, total=total_batches)
+        yield _event('status',   message=f'{len(tracks)} morceaux — Passe 1 : filtrage large ({total_p1} batch(s))…')
+        yield _event('progress', done=0, total=total_p1, phase=1)
+
+        pass1_decisions: list[Decision] = []
+        for idx, batch in enumerate(pass1_batches):
+            yield _event('status', message=f'Passe 1 — batch {idx+1}/{total_p1}…')
+            raw = _classifier._process_batch(prompt, batch, idx, total_p1, preprompt=PREPROMPT_PASS1)
+            for d in raw:
+                try:
+                    pass1_decisions.append(Decision(**d))
+                except (TypeError, ValueError) as e:
+                    logger.warning("Skipping malformed decision %s: %s", d, e)
+            yield _event('progress', done=idx+1, total=total_p1, phase=1)
+
+        candidates = [track_map[d.id] for d in pass1_decisions if d.include and d.id in track_map]
+        yield _event('status', message=f'Passe 1 terminée — {len(candidates)}/{len(tracks)} candidats retenus')
+
+        # --- Pass 2 : selective filter ---
+        if candidates:
+            pass2_batches = [candidates[i:i+_cfg.BATCH_SIZE] for i in range(0, len(candidates), _cfg.BATCH_SIZE)]
+            total_p2      = len(pass2_batches)
+
+            yield _event('status',   message=f'Passe 2 : sélection fine ({total_p2} batch(s))…')
+            yield _event('progress', done=0, total=total_p2, phase=2)
+
+            for idx, batch in enumerate(pass2_batches):
+                yield _event('status', message=f'Passe 2 — batch {idx+1}/{total_p2}…')
+                raw = _classifier._process_batch(
+                    prompt, batch, idx, total_p2,
+                    preprompt=PREPROMPT_PASS2,
+                    anchors=anchor_tracks or None,
+                )
+                for d in raw:
+                    try:
+                        decisions.append(Decision(**d))
+                    except (TypeError, ValueError) as e:
+                        logger.warning("Skipping malformed decision %s: %s", d, e)
+                yield _event('progress', done=idx+1, total=total_p2, phase=2)
+        else:
+            yield _event('status', message='Aucun candidat retenu en passe 1')
+
+    else:
+        # --- Single pass ---
+        batches  = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
+        total_b  = len(batches)
+
+        yield _event('status',   message=f'{len(tracks)} morceaux — {total_b} batch(s) à analyser')
+        yield _event('progress', done=0, total=total_b)
+
+        for idx, batch in enumerate(batches):
+            yield _event('status', message=f'Batch {idx+1}/{total_b} — analyse de {len(batch)} morceaux…')
+            raw = _classifier._process_batch(
+                prompt, batch, idx, total_b,
+                anchors=anchor_tracks or None,
+            )
+            for d in raw:
+                try:
+                    decisions.append(Decision(**d))
+                except (TypeError, ValueError) as e:
+                    logger.warning("Skipping malformed decision %s: %s", d, e)
+            yield _event('progress', done=idx+1, total=total_b)
 
     selected = _filter(decisions)
     yield _event('status', message=f'{len(selected)}/{len(tracks)} morceaux retenus — création de la playlist…')
 
     playlist_id = spotify.create_playlist(playlist_name, selected)
-
-    # Prompt en DB
     save_playlist_prompt(user_id, playlist_id, prompt)
-
     _write_decisions_log(prompt, decisions)
 
     yield _event('done', **{
@@ -73,6 +146,8 @@ def sync_all_playlists_stream(
     source_id: str,
 ) -> Generator[str, None, None]:
 
+    import config as _cfg
+
     spotify = SpotifyService(access_token)
 
     yield _event('status', message='Récupération de la playlist source…')
@@ -85,10 +160,11 @@ def sync_all_playlists_stream(
     results   = {}
 
     if total == 0:
+        yield _event('status', message='Aucune playlist IA- trouvée')
         yield _event('done', results={})
         return
 
-    yield _event('status', message=f'{total} playlist(s) à synchroniser')
+    yield _event('status',   message=f'{total} playlist(s) à synchroniser')
     yield _event('progress', done=0, total=total)
 
     for i, playlist in enumerate(generated):
@@ -100,12 +176,10 @@ def sync_all_playlists_stream(
         target_tracks = spotify.get_tracks(pid, extended=True)
         existing_ids  = {t.id for t in target_tracks}
 
-        # 1. Suppression
         to_remove = [t.id for t in target_tracks if t.id not in source_ids]
         if to_remove:
             spotify.remove_from_playlist(pid, to_remove)
 
-        # 2. Date de référence
         if target_tracks:
             last_added = max(t.added_at for t in target_tracks)
         else:
@@ -125,16 +199,25 @@ def sync_all_playlists_stream(
             checked = len(new_tracks)
 
             if new_tracks:
-                # Récupérer le prompt depuis la DB
                 prompt = get_playlist_prompt(pid)
                 if not prompt:
                     logger.warning("No prompt in DB for '%s', skipping", name)
                     results[pid] = {'name': name, 'removed': len(to_remove), 'added': 0, 'checked': checked, 'reason': 'no prompt in DB'}
                 else:
-                    batch_total = -(-len(new_tracks) // __import__('config').BATCH_SIZE)
-                    yield _event('status', message=f'[{i+1}/{total}] {name} — classification de {checked} nouveaux morceaux ({batch_total} batch(s))…')
-                    decisions = _classifier.classify(prompt, new_tracks)
-                    selected  = _filter(decisions)
+                    total_batches = -(-len(new_tracks) // _cfg.BATCH_SIZE)
+                    batches       = [new_tracks[j:j+_cfg.BATCH_SIZE] for j in range(0, len(new_tracks), _cfg.BATCH_SIZE)]
+                    all_decisions = []
+
+                    for bidx, batch in enumerate(batches):
+                        yield _event('status', message=f'[{i+1}/{total}] {name} — batch {bidx+1}/{total_batches}…')
+                        raw = _classifier._process_batch(prompt, batch, bidx, total_batches)
+                        for d in raw:
+                            try:
+                                all_decisions.append(Decision(**d))
+                            except (TypeError, ValueError):
+                                pass
+
+                    selected = _filter(all_decisions)
                     if selected:
                         spotify.add_to_playlist(pid, selected)
                     added = len(selected)
@@ -152,11 +235,11 @@ def sync_all_playlists_stream(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _filter(decisions: list[Decision]) -> list[str]:
+def _filter(decisions: list) -> list:
     return [d.id for d in decisions if d.include]
 
 
-def _write_decisions_log(prompt: str, decisions: list[Decision]):
+def _write_decisions_log(prompt: str, decisions: list):
     log_path = os.path.join(os.path.dirname(__file__), '..', 'decisions.log')
     included = [d for d in decisions if d.include]
     excluded = [d for d in decisions if not d.include]
@@ -164,9 +247,9 @@ def _write_decisions_log(prompt: str, decisions: list[Decision]):
         f.write(f"PROMPT : {prompt}\n")
         f.write(f"TOTAL  : {len(decisions)} — INCLUS : {len(included)} — EXCLUS : {len(excluded)}\n")
         f.write("=" * 60 + "\n\n")
-        f.write("✅ INCLUS\n")
+        f.write("INCLUS\n")
         for d in included:
             f.write(f"  {d.title} — {d.reason}\n")
-        f.write("\n❌ EXCLUS\n")
+        f.write("\nEXCLUS\n")
         for d in excluded:
             f.write(f"  {d.title} — {d.reason}\n")
