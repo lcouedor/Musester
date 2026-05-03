@@ -1,12 +1,13 @@
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Generator
 
 from core.models import Track, Decision
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT, PREPROMPT_PASS1, PREPROMPT_PASS2
-from services.auth import save_playlist_prompt, get_playlist_prompt
+from services.auth import save_playlist_prompt, get_playlist_prompt, get_playlist_anchors
 
 logger      = logging.getLogger(__name__)
 _classifier = ClassifierService()
@@ -55,28 +56,37 @@ def generate_playlist_stream(
     decisions: list[Decision] = []
 
     if multi_pass:
-        # --- Pass 1 : broad filter ---
+        # --- Pass 1 : broad filter (parallel) ---
         pass1_batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
         total_p1      = len(pass1_batches)
 
         yield _event('status',   message=f'{len(tracks)} morceaux — Passe 1 : filtrage large ({total_p1} batch(s))…')
         yield _event('progress', done=0, total=total_p1, phase=1)
 
+        raw_by_idx: dict[int, list] = {}
+        with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+            futures = {
+                ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1): i
+                for i, b in enumerate(pass1_batches)
+            }
+            done_p1 = 0
+            for fut in as_completed(futures):
+                raw_by_idx[futures[fut]] = fut.result()
+                done_p1 += 1
+                yield _event('progress', done=done_p1, total=total_p1, phase=1)
+
         pass1_decisions: list[Decision] = []
-        for idx, batch in enumerate(pass1_batches):
-            yield _event('status', message=f'Passe 1 — batch {idx+1}/{total_p1}…')
-            raw = _classifier._process_batch(prompt, batch, idx, total_p1, preprompt=PREPROMPT_PASS1)
-            for d in raw:
+        for idx in sorted(raw_by_idx):
+            for d in raw_by_idx[idx]:
                 try:
                     pass1_decisions.append(Decision(**d))
                 except (TypeError, ValueError) as e:
                     logger.warning("Skipping malformed decision %s: %s", d, e)
-            yield _event('progress', done=idx+1, total=total_p1, phase=1)
 
         candidates = [track_map[d.id] for d in pass1_decisions if d.include and d.id in track_map]
         yield _event('status', message=f'Passe 1 terminée — {len(candidates)}/{len(tracks)} candidats retenus')
 
-        # --- Pass 2 : selective filter ---
+        # --- Pass 2 : selective filter (parallel) ---
         if candidates:
             pass2_batches = [candidates[i:i+_cfg.BATCH_SIZE] for i in range(0, len(candidates), _cfg.BATCH_SIZE)]
             total_p2      = len(pass2_batches)
@@ -84,48 +94,60 @@ def generate_playlist_stream(
             yield _event('status',   message=f'Passe 2 : sélection fine ({total_p2} batch(s))…')
             yield _event('progress', done=0, total=total_p2, phase=2)
 
-            for idx, batch in enumerate(pass2_batches):
-                yield _event('status', message=f'Passe 2 — batch {idx+1}/{total_p2}…')
-                raw = _classifier._process_batch(
-                    prompt, batch, idx, total_p2,
-                    preprompt=PREPROMPT_PASS2,
-                    anchors=anchor_tracks or None,
-                )
-                for d in raw:
+            raw_by_idx2: dict[int, list] = {}
+            with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+                futures2 = {
+                    ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anchor_tracks or None): i
+                    for i, b in enumerate(pass2_batches)
+                }
+                done_p2 = 0
+                for fut in as_completed(futures2):
+                    raw_by_idx2[futures2[fut]] = fut.result()
+                    done_p2 += 1
+                    yield _event('progress', done=done_p2, total=total_p2, phase=2)
+
+            for idx in sorted(raw_by_idx2):
+                for d in raw_by_idx2[idx]:
                     try:
                         decisions.append(Decision(**d))
                     except (TypeError, ValueError) as e:
                         logger.warning("Skipping malformed decision %s: %s", d, e)
-                yield _event('progress', done=idx+1, total=total_p2, phase=2)
         else:
             yield _event('status', message='Aucun candidat retenu en passe 1')
 
     else:
-        # --- Single pass ---
-        batches  = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
-        total_b  = len(batches)
+        # --- Single pass (parallel) ---
+        batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
+        total_b = len(batches)
 
-        yield _event('status',   message=f'{len(tracks)} morceaux — {total_b} batch(s) à analyser')
+        yield _event('status',   message=f'{len(tracks)} morceaux — {total_b} batch(s) en cours…')
         yield _event('progress', done=0, total=total_b)
 
-        for idx, batch in enumerate(batches):
-            yield _event('status', message=f'Batch {idx+1}/{total_b} — analyse de {len(batch)} morceaux…')
-            raw = _classifier._process_batch(
-                prompt, batch, idx, total_b,
-                anchors=anchor_tracks or None,
-            )
-            for d in raw:
+        raw_by_idx3: dict[int, list] = {}
+        with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+            futures3 = {
+                ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anchor_tracks or None): i
+                for i, b in enumerate(batches)
+            }
+            done_b = 0
+            for fut in as_completed(futures3):
+                raw_by_idx3[futures3[fut]] = fut.result()
+                done_b += 1
+                yield _event('progress', done=done_b, total=total_b)
+
+        for idx in sorted(raw_by_idx3):
+            for d in raw_by_idx3[idx]:
                 try:
                     decisions.append(Decision(**d))
                 except (TypeError, ValueError) as e:
                     logger.warning("Skipping malformed decision %s: %s", d, e)
-            yield _event('progress', done=idx+1, total=total_b)
 
     selected = _filter(decisions)
     yield _event('status', message=f'{len(selected)}/{len(tracks)} morceaux retenus — création de la playlist…')
 
     playlist_id = spotify.create_playlist(playlist_name, selected)
-    save_playlist_prompt(user_id, playlist_id, prompt)
+    saved_anchors = [{'id': t.id, 'title': t.title, 'artists': t.artists} for t in anchor_tracks] or None
+    save_playlist_prompt(user_id, playlist_id, prompt, anchors=saved_anchors)
     _write_decisions_log(prompt, decisions)
 
     yield _event('done', **{
@@ -204,14 +226,25 @@ def sync_all_playlists_stream(
                     logger.warning("No prompt in DB for '%s', skipping", name)
                     results[pid] = {'name': name, 'removed': len(to_remove), 'added': 0, 'checked': checked, 'reason': 'no prompt in DB'}
                 else:
+                    raw_anchors   = get_playlist_anchors(pid)
+                    sync_anchors  = [Track(id=a['id'], title=a['title'], artists=a['artists'], album='') for a in raw_anchors] or None
                     total_batches = -(-len(new_tracks) // _cfg.BATCH_SIZE)
                     batches       = [new_tracks[j:j+_cfg.BATCH_SIZE] for j in range(0, len(new_tracks), _cfg.BATCH_SIZE)]
-                    all_decisions = []
 
-                    for bidx, batch in enumerate(batches):
-                        yield _event('status', message=f'[{i+1}/{total}] {name} — batch {bidx+1}/{total_batches}…')
-                        raw = _classifier._process_batch(prompt, batch, bidx, total_batches)
-                        for d in raw:
+                    yield _event('status', message=f'[{i+1}/{total}] {name} — {total_batches} batch(s) en cours…')
+
+                    sync_raw: dict[int, list] = {}
+                    with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+                        sync_futures = {
+                            ex.submit(_classifier._process_batch, prompt, b, j, total_batches, None, sync_anchors): j
+                            for j, b in enumerate(batches)
+                        }
+                        for fut in as_completed(sync_futures):
+                            sync_raw[sync_futures[fut]] = fut.result()
+
+                    all_decisions = []
+                    for j in sorted(sync_raw):
+                        for d in sync_raw[j]:
                             try:
                                 all_decisions.append(Decision(**d))
                             except (TypeError, ValueError):
