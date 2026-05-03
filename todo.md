@@ -1,1 +1,3 @@
-- [ ] Améliorer le loader avec l'affichage des batchs
+- [ ] Améliorer le loader avec l'affichage des batchs qui ne fonctionne que pour le sync (pour le generate il reste à 0/20)
+- [ ] Améliorer le formulaire pour mettre du rouge dans les inputs si il manque une donnée
+- [ ] 
