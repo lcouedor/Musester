@@ -7,7 +7,7 @@ from typing import Optional
 
 from flask import Blueprint, request, jsonify, redirect, session, Response, stream_with_context
 
-from core.playlist import generate_playlist_stream, sync_all_playlists_stream
+from core.playlist import generate_playlist_stream, generate_multi_playlist_stream, sync_all_playlists_stream
 from services.auth import (
     get_auth_url, exchange_code, save_token, get_valid_token,
     save_generate, save_sync, get_history,
@@ -17,7 +17,7 @@ from services.spotify import SpotifyService
 import config
 
 logger = logging.getLogger(__name__)
-bp     = Blueprint('api', __name__)
+bp     = Blueprint("api", __name__)
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ bp     = Blueprint('api', __name__)
 # ---------------------------------------------------------------------------
 
 def _get_token() -> Optional[str]:
-    user_id = session.get('user_id')
+    user_id = session.get("user_id")
     if not user_id:
         return None
     return get_valid_token(user_id)
@@ -36,7 +36,7 @@ def require_auth(f):
     def decorated(*args, **kwargs):
         token = _get_token()
         if not token:
-            return _err('Not authenticated. Please login via /auth/login', 401)
+            return _err("Not authenticated. Please login via /auth/login", 401)
         return f(token, *args, **kwargs)
     return decorated
 
@@ -49,13 +49,13 @@ def _elapsed(start: float) -> str:
     return f"{round(time.time() - start, 2)}s"
 
 def _ok(data, start: float = None) -> tuple:
-    resp = {'error': None, 'data': data}
+    resp = {"error": None, "data": data}
     if start is not None:
-        resp['execution_time'] = _elapsed(start)
+        resp["execution_time"] = _elapsed(start)
     return jsonify(resp), 200
 
 def _err(message: str, status: int = 400) -> tuple:
-    return jsonify({'error': message, 'data': None}), status
+    return jsonify({"error": message, "data": None}), status
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ def _parse_id(raw: str) -> str:
     if raw == "liked":
         return raw
     try:
-        return raw.split('playlist/')[1].split('?')[0]
+        return raw.split("playlist/")[1].split("?")[0]
     except (IndexError, AttributeError):
         return raw
 
@@ -75,125 +75,141 @@ def _parse_id(raw: str) -> str:
 # Auth routes
 # ---------------------------------------------------------------------------
 
-@bp.route('/auth/login')
+@bp.route("/auth/login")
 def login():
     state = secrets.token_urlsafe(16)
-    session['oauth_state'] = state
+    session["oauth_state"] = state
     return redirect(get_auth_url(state))
 
 
-@bp.route('/auth/callback')
+@bp.route("/auth/callback")
 def callback():
-    error = request.args.get('error')
+    error = request.args.get("error")
     if error:
         return redirect(f"{config.FRONTEND_URL}?error={error}")
 
-    state = request.args.get('state')
-    if state != session.get('oauth_state'):
-        return _err('Invalid state parameter', 403)
+    state = request.args.get("state")
+    if state != session.get("oauth_state"):
+        return _err("Invalid state parameter", 403)
 
-    code       = request.args.get('code')
+    code       = request.args.get("code")
     token_data = exchange_code(code)
-    user_id    = SpotifyService.get_user_id(token_data['access_token'])
+    user_id    = SpotifyService.get_user_id(token_data["access_token"])
     save_token(user_id, token_data)
-    session['user_id'] = user_id
+    session["user_id"] = user_id
 
     logger.info("User '%s' authenticated", user_id)
     return redirect(config.FRONTEND_URL)
 
 
-@bp.route('/auth/logout')
+@bp.route("/auth/logout")
 def logout():
     session.clear()
-    return jsonify({'error': None, 'data': {'message': 'Logged out'}})
+    return jsonify({"error": None, "data": {"message": "Logged out"}})
 
 
-@bp.route('/auth/me')
+@bp.route("/auth/me")
 def me():
-    user_id = session.get('user_id')
+    user_id = session.get("user_id")
     if not user_id:
-        return _err('Not authenticated', 401)
-    return jsonify({'error': None, 'data': {'user_id': user_id}})
+        return _err("Not authenticated", 401)
+    return jsonify({"error": None, "data": {"user_id": user_id}})
 
 
 # ---------------------------------------------------------------------------
-# SSE routes
+# SSE — Generate
 # ---------------------------------------------------------------------------
 
-@bp.route('/generate', methods=['POST'])
+@bp.route("/generate", methods=["POST"])
 @require_auth
 def generate(access_token: str):
     body       = request.json or {}
-    source_id  = body.get('source_id')
-    name       = body.get('playlist_name')
-    prompt     = body.get('playlist_prompt')
-    anchors    = body.get('anchors', [])
-    multi_pass = body.get('multi_pass', True)
+    source_id  = body.get("source_id", "").strip()
+    playlists  = body.get("playlists", [])
+    multi_pass = body.get("multi_pass", True)
 
-    if not all([source_id, name, prompt]):
-        return _err('Missing required parameters: source_id, playlist_name, playlist_prompt')
+    if not source_id:
+        return _err("Missing required parameter: source_id")
+    if not playlists or not isinstance(playlists, list):
+        return _err("Missing required parameter: playlists")
+    if len(playlists) > 3:
+        return _err("Maximum 3 playlists par génération")
+    for i, pl in enumerate(playlists):
+        if not pl.get("name") or not pl.get("prompt"):
+            return _err(f"Playlist {i+1} : name and prompt are required")
 
-    user_id = session.get('user_id')
+    user_id = session.get("user_id")
     start   = time.time()
+    pid     = _parse_id(source_id)
+
+    if len(playlists) == 1:
+        pl = playlists[0]
+        def stream_fn():
+            return generate_playlist_stream(
+                access_token, pid, pl["name"], pl["prompt"], user_id,
+                anchors=pl.get("anchors", []), multi_pass=multi_pass,
+            )
+    else:
+        def stream_fn():
+            return generate_multi_playlist_stream(access_token, pid, playlists, user_id)
 
     def stream():
-        result = {}
-        for event in generate_playlist_stream(
-            access_token, _parse_id(source_id), name, prompt, user_id,
-            anchors=anchors, multi_pass=multi_pass,
-        ):
+        import json as _json
+        all_results = []
+        for event in stream_fn():
             yield event
-            # Récupérer les données du dernier event 'done'
-            import json as _json
             try:
-                data = _json.loads(event.removeprefix('data: ').strip())
-                if data.get('kind') == 'done':
-                    result.update(data)
+                data = _json.loads(event.removeprefix("data: ").strip())
+                if data.get("kind") == "done":
+                    all_results = data.get("results", [])
             except Exception:
                 pass
 
-        # Sauvegarder dans l'historique après le stream
-        if result.get('playlist_id'):
-            save_generate(user_id, {
-                'playlist_id':    result['playlist_id'],
-                'playlist_name':  name,
-                'prompt':         prompt,
-                'checked_songs':  result.get('checked_songs', 0),
-                'selected_songs': result.get('selected_songs', 0),
-                'execution_time': _elapsed(start),
-            })
+        for pl_result in all_results:
+            pidx    = pl_result.get("playlist_idx", 0)
+            pl_spec = playlists[pidx] if pidx < len(playlists) else playlists[0]
+            if pl_result.get("playlist_id"):
+                save_generate(user_id, {
+                    "playlist_id":    pl_result["playlist_id"],
+                    "playlist_name":  pl_result["playlist_name"],
+                    "prompt":         pl_spec.get("prompt", ""),
+                    "checked_songs":  pl_result.get("checked_songs", 0),
+                    "selected_songs": pl_result.get("selected_songs", 0),
+                    "execution_time": _elapsed(start),
+                })
 
     return Response(
         stream_with_context(stream()),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control':    'no-cache',
-            'X-Accel-Buffering': 'no',
-        }
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
-@bp.route('/sync', methods=['POST'])
+# ---------------------------------------------------------------------------
+# SSE — Sync
+# ---------------------------------------------------------------------------
+
+@bp.route("/sync", methods=["POST"])
 @require_auth
 def sync(access_token: str):
     body      = request.json or {}
-    source_id = body.get('source_id')
+    source_id = body.get("source_id")
 
     if not source_id:
-        return _err('Missing required parameter: source_id')
+        return _err("Missing required parameter: source_id")
 
-    user_id = session.get('user_id')
+    user_id = session.get("user_id")
     start   = time.time()
 
     def stream():
+        import json as _json
         results = {}
         for event in sync_all_playlists_stream(access_token, _parse_id(source_id)):
             yield event
-            import json as _json
             try:
-                data = _json.loads(event.removeprefix('data: ').strip())
-                if data.get('kind') == 'done':
-                    results.update(data.get('results', {}))
+                data = _json.loads(event.removeprefix("data: ").strip())
+                if data.get("kind") == "done":
+                    results.update(data.get("results", {}))
             except Exception:
                 pass
 
@@ -202,32 +218,29 @@ def sync(access_token: str):
 
     return Response(
         stream_with_context(stream()),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control':    'no-cache',
-            'X-Accel-Buffering': 'no',
-        }
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
 # ---------------------------------------------------------------------------
-# Source tracks (for anchor picker)
+# Source tracks (anchor picker)
 # ---------------------------------------------------------------------------
 
-@bp.route('/source-tracks', methods=['GET'])
+@bp.route("/source-tracks", methods=["GET"])
 @require_auth
 def source_tracks(access_token: str):
-    source_id = request.args.get('source_id', '').strip()
+    source_id = request.args.get("source_id", "").strip()
     if not source_id:
-        return _err('Missing required parameter: source_id')
+        return _err("Missing required parameter: source_id")
 
     spotify = SpotifyService(access_token)
     tracks  = spotify.get_tracks(_parse_id(source_id))
     return _ok([{
-        'id':        t.id,
-        'title':     t.title,
-        'artists':   t.artists,
-        'cover_url': t.cover_url,
+        "id":        t.id,
+        "title":     t.title,
+        "artists":   t.artists,
+        "cover_url": t.cover_url,
     } for t in tracks])
 
 
@@ -235,7 +248,7 @@ def source_tracks(access_token: str):
 # Playlists
 # ---------------------------------------------------------------------------
 
-@bp.route('/playlists', methods=['GET'])
+@bp.route("/playlists", methods=["GET"])
 @require_auth
 def playlists(access_token: str):
     spotify   = SpotifyService(access_token)
@@ -243,43 +256,42 @@ def playlists(access_token: str):
     result    = []
 
     for p in generated:
-        pid       = p['id']
-        prompt    = get_playlist_prompt(pid) or ''
+        pid       = p["id"]
+        prompt    = get_playlist_prompt(pid) or ""
         tracks    = spotify.get_tracks(pid, extended=True)
         last_sync = max((t.added_at for t in tracks), default=None)
         result.append({
-            'id':          pid,
-            'name':        p['name'],
-            'prompt':      prompt,
-            'track_count': len(tracks),
-            'last_sync':   last_sync,
+            "id":          pid,
+            "name":        p["name"],
+            "prompt":      prompt,
+            "track_count": len(tracks),
+            "last_sync":   last_sync,
         })
 
     return _ok(result)
 
 
-@bp.route('/playlists/<playlist_id>/prompt', methods=['PUT'])
+@bp.route("/playlists/<playlist_id>/prompt", methods=["PUT"])
 @require_auth
 def update_prompt(access_token: str, playlist_id: str):
-    """Met à jour le prompt d'une playlist existante en DB."""
     body   = request.json or {}
-    prompt = body.get('prompt')
+    prompt = body.get("prompt")
 
     if not prompt:
-        return _err('Missing required parameter: prompt')
+        return _err("Missing required parameter: prompt")
 
-    user_id = session.get('user_id')
+    user_id = session.get("user_id")
     save_playlist_prompt(user_id, playlist_id, prompt)
     logger.info("Prompt updated for playlist '%s'", playlist_id)
-    return _ok({'playlist_id': playlist_id, 'prompt': prompt})
+    return _ok({"playlist_id": playlist_id, "prompt": prompt})
 
 
 # ---------------------------------------------------------------------------
 # History
 # ---------------------------------------------------------------------------
 
-@bp.route('/history', methods=['GET'])
+@bp.route("/history", methods=["GET"])
 @require_auth
 def history(access_token: str):
-    user_id = session.get('user_id')
+    user_id = session.get("user_id")
     return _ok(get_history(user_id))
