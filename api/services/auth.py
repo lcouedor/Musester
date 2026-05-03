@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sqlite3
@@ -55,9 +56,15 @@ def init_db():
                 playlist_id TEXT PRIMARY KEY,
                 user_id     TEXT NOT NULL,
                 prompt      TEXT NOT NULL,
+                anchors     TEXT,
                 updated_at  TEXT NOT NULL
             )
         """)
+        # Migration : ajout colonne anchors sur les bases existantes
+        try:
+            conn.execute("ALTER TABLE playlist_prompts ADD COLUMN anchors TEXT")
+        except sqlite3.OperationalError:
+            pass
     logger.info("DBs ready")
 
 
@@ -65,15 +72,17 @@ def init_db():
 # Prompts
 # ---------------------------------------------------------------------------
 
-def save_playlist_prompt(user_id: str, playlist_id: str, prompt: str):
+def save_playlist_prompt(user_id: str, playlist_id: str, prompt: str, anchors: list = None):
+    anchors_json = json.dumps(anchors) if anchors else None
     with _get_conn(HISTORY_PATH) as conn:
         conn.execute("""
-            INSERT INTO playlist_prompts (playlist_id, user_id, prompt, updated_at)
-            VALUES (?, ?, ?, datetime('now'))
+            INSERT INTO playlist_prompts (playlist_id, user_id, prompt, anchors, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
             ON CONFLICT(playlist_id) DO UPDATE SET
                 prompt     = excluded.prompt,
+                anchors    = excluded.anchors,
                 updated_at = excluded.updated_at
-        """, (playlist_id, user_id, prompt))
+        """, (playlist_id, user_id, prompt, anchors_json))
 
 
 def get_playlist_prompt(playlist_id: str) -> Optional[str]:
@@ -82,6 +91,19 @@ def get_playlist_prompt(playlist_id: str) -> Optional[str]:
             "SELECT prompt FROM playlist_prompts WHERE playlist_id = ?", (playlist_id,)
         ).fetchone()
     return row["prompt"] if row else None
+
+
+def get_playlist_anchors(playlist_id: str) -> list:
+    with _get_conn(HISTORY_PATH) as conn:
+        row = conn.execute(
+            "SELECT anchors FROM playlist_prompts WHERE playlist_id = ?", (playlist_id,)
+        ).fetchone()
+    if not row or not row["anchors"]:
+        return []
+    try:
+        return json.loads(row["anchors"])
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 # ---------------------------------------------------------------------------
