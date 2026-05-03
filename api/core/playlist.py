@@ -183,10 +183,12 @@ def generate_multi_playlist_stream(
     source_id: str,
     playlists: list[dict],
     user_id: str,
+    multi_pass: bool = False,
 ) -> Generator[str, None, None]:
     """
     playlists: [{'name': str, 'prompt': str, 'anchors': list[dict]}]
     Single GPT pass evaluates each track against all playlist contexts simultaneously.
+    With multi_pass: passe 1 broad single filter → passe 2 full multi-playlist eval.
     """
     import config as _cfg
 
@@ -204,13 +206,55 @@ def generate_multi_playlist_stream(
             "anchors": _resolve_anchors(pl.get("anchors", []), track_map),
         })
 
-    batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
-    total_b = len(batches)
-
-    yield _event("status",   message=f"{len(tracks)} morceaux — {total_b} batch(s) — {len(playlists)} playlists en parallèle…")
-    yield _event("progress", done=0, total=total_b)
-
     decisions_by_playlist: dict[int, list[Decision]] = {i: [] for i in range(len(playlists))}
+
+    if multi_pass:
+        # --- Passe 1 : filtre large sur une description combinée ---
+        combined_prompt = " / ".join(f'[{spec["name"]}] {spec["prompt"]}' for spec in playlists_spec)
+
+        pass1_batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
+        total_p1      = len(pass1_batches)
+
+        yield _event("status",   message=f"{len(tracks)} morceaux — Passe 1 : filtrage large ({total_p1} batch(s))…")
+        yield _event("progress", done=0, total=total_p1, phase=1)
+
+        raw_p1: dict[int, list] = {}
+        with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+            futs = {ex.submit(_classifier._process_batch, combined_prompt, b, i, total_p1, PREPROMPT_PASS1): i
+                    for i, b in enumerate(pass1_batches)}
+            done = 0
+            for fut in as_completed(futs):
+                raw_p1[futs[fut]] = fut.result()
+                done += 1
+                yield _event("progress", done=done, total=total_p1, phase=1)
+
+        pass1_decisions: list[Decision] = []
+        for idx in sorted(raw_p1):
+            for d in raw_p1[idx]:
+                try:
+                    pass1_decisions.append(Decision(**d))
+                except (TypeError, ValueError) as e:
+                    logger.warning("Skipping malformed decision %s: %s", d, e)
+
+        candidates = [track_map[d.id] for d in pass1_decisions if d.include and d.id in track_map]
+        yield _event("status", message=f"Passe 1 terminée — {len(candidates)}/{len(tracks)} candidats retenus")
+
+        if not candidates:
+            yield _event("status", message="Aucun candidat retenu en passe 1")
+            yield _event("done", results=[])
+            return
+
+        eval_tracks = candidates
+    else:
+        eval_tracks = tracks
+
+    # --- Passe finale : évaluation multi-playlist complète ---
+    batches = [eval_tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(eval_tracks), _cfg.BATCH_SIZE)]
+    total_b = len(batches)
+    phase   = 2 if multi_pass else None
+
+    yield _event("status",   message=f"{'Passe 2 : sélection fine' if multi_pass else f'{len(tracks)} morceaux'} — {total_b} batch(s) — {len(playlists)} playlists…")
+    yield _event("progress", done=0, total=total_b, **({} if phase is None else {"phase": phase}))
 
     raw_by_idx: dict[int, dict] = {}
     with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
@@ -220,7 +264,10 @@ def generate_multi_playlist_stream(
         for fut in as_completed(futs):
             raw_by_idx[futs[fut]] = fut.result()
             done += 1
-            yield _event("progress", done=done, total=total_b)
+            evt = {"done": done, "total": total_b}
+            if phase is not None:
+                evt["phase"] = phase
+            yield _event("progress", **evt)
 
     for idx in sorted(raw_by_idx):
         for pidx, raw_decisions in raw_by_idx[idx].items():

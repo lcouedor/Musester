@@ -151,7 +151,7 @@ def generate(access_token: str):
             )
     else:
         def stream_fn():
-            return generate_multi_playlist_stream(access_token, pid, playlists, user_id)
+            return generate_multi_playlist_stream(access_token, pid, playlists, user_id, multi_pass=multi_pass)
 
     def stream():
         import json as _json
