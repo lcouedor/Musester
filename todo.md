@@ -1,0 +1,1 @@
+- [ ] Améliorer le loader avec l'affichage des batchs

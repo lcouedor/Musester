@@ -3,6 +3,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Semaphore
+from typing import Callable, Optional
 
 from openai import OpenAI
 from core.models import Track, Decision
@@ -46,7 +47,12 @@ class ClassifierService:
             cls._instance._semaphore = Semaphore(config.MAX_WORKERS)
         return cls._instance
 
-    def classify(self, description: str, tracks: list[Track]) -> list[Decision]:
+    def classify(
+        self,
+        description: str,
+        tracks: list[Track],
+        on_batch_done: Optional[Callable[[int, int], None]] = None,
+    ) -> list[Decision]:
         batches = [tracks[i:i+config.BATCH_SIZE] for i in range(0, len(tracks), config.BATCH_SIZE)]
         total   = len(batches)
         results = [None] * total
@@ -59,6 +65,9 @@ class ClassifierService:
             for future in as_completed(futures):
                 idx          = futures[future]
                 results[idx] = future.result()
+                if on_batch_done:
+                    done = sum(1 for r in results if r is not None)
+                    on_batch_done(done, total)
 
         decisions = []
         for batch in results:
