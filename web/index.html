@@ -12,349 +12,426 @@
     :root {
       --bg:      #0a0a0a;
       --surface: #111111;
-      --border:  #222222;
+      --border:  #363636;
       --accent:  #1DB954;
       --accent2: #169c44;
-      --text:    #f0f0f0;
-      --muted:   #666666;
+      --text:    #e8e8e8;
+      --muted:   #a8a8a8;
       --danger:  #e05555;
       --mono:    'DM Mono', monospace;
       --display: 'Syne', sans-serif;
     }
 
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--mono);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 60px 20px;
+      background: var(--bg); color: var(--text); font-family: var(--mono);
+      min-height: 100vh; padding: 28px 24px 60px;
     }
 
     body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
+      content: ''; position: fixed; inset: 0;
       background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-      pointer-events: none;
-      z-index: 0;
+      pointer-events: none; z-index: 0;
     }
 
     .wrap {
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      max-width: 600px;
-      display: flex;
-      flex-direction: column;
-      gap: 32px;
+      position: relative; z-index: 1; width: 100%; max-width: 1120px;
+      margin: 0 auto; display: flex; flex-direction: column; gap: 20px;
     }
 
-    header { display: flex; align-items: baseline; gap: 12px; }
-
-    h1 {
-      font-family: var(--display);
-      font-size: 2.4rem;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      line-height: 1;
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; flex-wrap: wrap;
     }
+    .header-left { display: flex; align-items: baseline; gap: 12px; }
+    h1 { font-family: var(--display); font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
     h1 span { color: var(--accent); }
-    .version { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+    .version { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
 
     #status-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 16px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      font-size: 0.78rem;
-      color: var(--muted);
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px; border: 1px solid var(--border);
+      background: var(--surface); font-size: 0.82rem; color: var(--muted);
     }
-    #status-bar .dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--muted);
-      flex-shrink: 0;
-      transition: background 0.3s;
-    }
+    #status-bar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background 0.3s; }
     #status-bar.connected .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-    #status-bar.connected      { color: var(--text); border-color: #1a3a25; }
+    #status-bar.connected { color: var(--text); border-color: #1a3a25; }
 
+    /* ── Layout ── */
+    .login-wrap { display: flex; justify-content: center; padding: 60px 0; }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+      gap: 20px; align-items: start;
+    }
+    @media (max-width: 860px) { .dashboard { grid-template-columns: 1fr; } }
+
+    .col { display: flex; flex-direction: column; gap: 16px; }
+
+    /* ── Card ── */
     .card {
-      border: 1px solid var(--border);
-      background: var(--surface);
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+      border: 1px solid var(--border); background: var(--surface);
+      padding: 20px; display: flex; flex-direction: column; gap: 14px;
     }
-
     .card-title {
-      font-family: var(--display);
-      font-size: 0.85rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
+      font-family: var(--display); font-size: 0.8rem; font-weight: 700;
+      letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted);
     }
-
-    label {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      font-size: 0.72rem;
-      color: var(--muted);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+    .card-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
+    .card-desc { font-size: 0.84rem; color: var(--muted); line-height: 1.6; }
 
-    input, textarea {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-family: var(--mono);
-      font-size: 0.85rem;
-      padding: 10px 12px;
-      outline: none;
-      transition: border-color 0.2s;
-      width: 100%;
-      resize: none;
+    /* ── Field ── */
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label {
+      font-size: 0.74rem; color: var(--muted); letter-spacing: 0.06em;
+      text-transform: uppercase; font-weight: 500;
     }
-    input:focus, textarea:focus { border-color: var(--accent); }
-    input::placeholder, textarea::placeholder { color: #333; }
+    .field input, .field textarea {
+      background: #181818; border: 1px solid #484848;
+      color: var(--text); font-family: var(--mono); font-size: 0.88rem;
+      padding: 9px 12px; outline: none; transition: border-color 0.2s, background 0.2s;
+      width: 100%; resize: none; font-weight: 400;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); background: #1d1d1d; }
+    .field input::placeholder, .field textarea::placeholder { color: #686868; }
+    .field.error input, .field.error textarea { border-color: var(--danger); }
+    .field-error { font-size: 0.72rem; color: var(--danger); display: none; }
+    .field.error .field-error { display: block; }
 
+    /* ── Buttons ── */
     .btn {
-      font-family: var(--mono);
-      font-size: 0.8rem;
-      font-weight: 500;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      padding: 12px 20px;
-      border: 1px solid;
-      cursor: pointer;
-      transition: all 0.15s;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
+      font-family: var(--mono); font-size: 0.82rem; font-weight: 500;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 10px 18px; border: 1px solid; cursor: pointer;
+      transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px;
     }
     .btn-primary { background: var(--accent); border-color: var(--accent); color: #000; }
     .btn-primary:hover:not(:disabled) { background: var(--accent2); border-color: var(--accent2); }
     .btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
     .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: transparent; border-color: var(--border); color: var(--muted); }
+    .btn-danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+    .btn-sm { padding: 4px 10px; font-size: 0.7rem; }
     .btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-    /* Progress bar */
-    .progress-wrap {
-      height: 2px;
-      background: var(--border);
-      overflow: hidden;
-    }
-    .progress-bar {
-      height: 100%;
-      width: 0%;
-      background: var(--accent);
-      transition: width 0.4s ease;
-    }
+    /* ── Progress ── */
+    .progress-wrap { height: 3px; background: var(--border); overflow: hidden; position: relative; }
+    .progress-bar  { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease; }
     .progress-bar.indeterminate {
-      width: 40%;
-      animation: indeterminate 1.4s ease infinite;
+      width: 40% !important; transition: none;
+      animation: indeterminate 1.1s ease-in-out infinite;
     }
     @keyframes indeterminate {
       0%   { transform: translateX(-100%); }
-      100% { transform: translateX(350%); }
+      100% { transform: translateX(280%); }
     }
+    .status-line   { font-size: 0.78rem; color: var(--muted); min-height: 1.2em; }
+    .status-line.active { color: var(--text); }
+    .phase-label   { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+    .gen-loader    { display: flex; flex-direction: column; gap: 6px; }
 
-    /* Playlists list */
-    .playlist-list { display: flex; flex-direction: column; gap: 10px; }
+    /* ── Playlist tabs ── */
+    .playlist-tabs-bar {
+      display: flex; align-items: center; gap: 0;
+      border-bottom: 2px solid var(--border);
+    }
+    .playlist-tabs { display: flex; align-items: center; gap: 2px; flex: 1; }
+    .pl-tab {
+      display: flex; align-items: center; gap: 7px;
+      padding: 8px 14px; cursor: pointer; font-family: var(--mono); font-size: 0.8rem;
+      color: var(--muted); background: transparent; border: none;
+      border-bottom: 2px solid transparent; margin-bottom: -2px;
+      transition: all 0.15s; white-space: nowrap; user-select: none;
+    }
+    .pl-tab:hover { color: var(--text); }
+    .pl-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab-close {
+      background: none; border: none; color: #585858; cursor: pointer; font-size: 1rem;
+      padding: 0; line-height: 1; font-family: var(--mono); transition: color 0.15s;
+      display: flex; align-items: center;
+    }
+    .tab-close:hover { color: var(--danger); }
+    .tab-add {
+      font-family: var(--mono); font-size: 1.3rem; font-weight: 400; line-height: 1;
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      padding: 4px 12px 8px; margin-bottom: -2px; transition: color 0.15s;
+    }
+    .tab-add:hover:not(:disabled) { color: var(--accent); }
+    .tab-add:disabled { opacity: 0.3; cursor: not-allowed; }
+    .playlist-panel { display: flex; flex-direction: column; gap: 14px; padding-top: 16px; }
 
+    /* ── Toggle ── */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-top: 1px solid var(--border);
+    }
+    .toggle-label { display: flex; flex-direction: column; gap: 2px; }
+    .toggle-label span { font-size: 0.84rem; color: var(--text); }
+    .toggle-label small { font-size: 0.73rem; color: var(--muted); }
+    .toggle-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0; background: var(--border);
+      cursor: pointer; transition: background 0.2s; border-radius: 20px;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute; width: 14px; height: 14px;
+      left: 3px; top: 3px; background: var(--muted); border-radius: 50%; transition: all 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: #1a3a25; }
+    .toggle-switch input:checked + .toggle-slider::before { background: var(--accent); transform: translateX(16px); }
+
+    /* ── Anchors ── */
+    .anchor-section { display: flex; flex-direction: column; gap: 8px; }
+    .anchor-header  { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .anchor-label   { font-size: 0.74rem; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 500; }
+    .anchor-count   { font-size: 0.76rem; color: var(--muted); flex-shrink: 0; }
+    .count-num      { color: var(--accent); font-weight: 500; }
+    .count-num.warn { color: #e0a055; }
+    .anchor-hint    { font-size: 0.78rem; color: var(--muted); line-height: 1.55; }
+    .anchor-hint strong { color: var(--text); }
+
+
+.anchor-recap { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); background: var(--bg); }
+    .anchor-recap.hidden-recap { display: none; }
+    .anchor-chip {
+      display: flex; align-items: center; gap: 5px; background: #0d1f14;
+      border: 1px solid var(--accent); padding: 3px 7px 3px 4px; cursor: pointer;
+      font-family: var(--mono); font-size: 0.71rem; color: var(--text); transition: background 0.15s;
+    }
+    .anchor-chip:hover { background: #122a1c; }
+    .anchor-chip img { width: 20px; height: 20px; object-fit: cover; flex-shrink: 0; }
+    .chip-placeholder { width: 20px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .chip-name { max-width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chip-x { color: var(--accent); font-size: 0.78rem; margin-left: 2px; flex-shrink: 0; }
+
+    .anchor-search {
+      background: #181818; border: 1px solid #484848;
+      color: var(--text); font-family: var(--mono); font-size: 0.86rem;
+      padding: 8px 11px; outline: none; width: 100%; transition: border-color 0.2s, background 0.2s;
+    }
+    .anchor-search:focus { border-color: var(--accent); background: #1d1d1d; }
+    .anchor-search::placeholder { color: #686868; }
+
+    .anchor-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+      gap: 8px; max-height: 260px; overflow-y: auto; padding: 2px;
+    }
+    .anchor-grid .anchor-loading { grid-column: 1 / -1; }
+    .anchor-card {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      cursor: pointer; padding: 4px; border: 1px solid transparent;
+      transition: border-color 0.15s; background: var(--bg);
+    }
+    .anchor-card:hover { border-color: var(--border); }
+    .anchor-card.selected { border-color: var(--accent); background: #0d1f14; }
+    .anchor-card img { width: 64px; height: 64px; object-fit: cover; display: block; }
+    .anchor-card .ac-title {
+      font-size: 0.64rem; color: var(--text); text-align: center;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;
+    }
+    .anchor-card .ac-artist {
+      font-size: 0.6rem; color: var(--muted); text-align: center;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;
+    }
+    .anchor-loading { font-size: 0.8rem; color: var(--muted); font-style: italic; }
+
+    /* ── Generated playlists ── */
+    .playlist-list { display: flex; flex-direction: column; gap: 8px; }
     .playlist-item {
-      padding: 12px 14px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+      padding: 11px 13px; border: 1px solid var(--border); background: var(--bg);
+      display: flex; flex-direction: column; gap: 5px;
     }
-    .playlist-item .pi-name { font-size: 0.85rem; color: var(--text); }
-    .playlist-item .pi-meta { font-size: 0.72rem; color: var(--muted); display: flex; gap: 16px; }
-    .playlist-item .pi-prompt {
-      font-size: 0.72rem;
-      color: var(--muted);
-      font-style: italic;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+    .pi-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .pi-name   { font-size: 0.88rem; color: var(--text); font-weight: 500; }
+    .pi-meta   { font-size: 0.76rem; color: var(--muted); display: flex; gap: 16px; }
+    .pi-prompt { font-size: 0.76rem; color: var(--muted); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pi-edit-wrap { display: none; flex-direction: column; gap: 8px; margin-top: 4px; }
+    .pi-edit-wrap.open { display: flex; }
 
-    /* History */
-    .history-list { display: flex; flex-direction: column; gap: 8px; }
+    /* ── History ── */
+    .history-list { display: flex; flex-direction: column; gap: 6px; }
     .history-item {
-      padding: 10px 14px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
+      padding: 9px 13px; border: 1px solid var(--border); background: var(--bg);
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
     }
-    .history-item .hi-left { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-    .history-item .hi-name { font-size: 0.82rem; color: var(--text); }
-    .history-item .hi-prompt {
-      font-size: 0.7rem; color: var(--muted);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .history-item .hi-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
-    .history-item .hi-count { font-size: 0.78rem; color: var(--accent); }
-    .history-item .hi-date  { font-size: 0.68rem; color: var(--muted); }
+    .hi-badge { font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 7px; border: 1px solid; flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
+    .hi-badge.generate { color: var(--accent); border-color: var(--accent); }
+    .hi-badge.sync     { color: var(--muted);  border-color: var(--border); }
+    .hi-left  { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+    .hi-name  { font-size: 0.86rem; color: var(--text); }
+    .hi-prompt { font-size: 0.74rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hi-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+    .hi-count { font-size: 0.82rem; color: var(--accent); }
+    .hi-date  { font-size: 0.71rem; color: var(--muted); }
 
-    /* Log */
+    /* ── Log ── */
     #log {
-      border: 1px solid var(--border);
-      background: var(--bg);
-      padding: 16px;
-      font-size: 0.75rem;
-      line-height: 1.8;
-      min-height: 60px;
-      max-height: 260px;
-      overflow-y: auto;
-      color: var(--muted);
+      border: 1px solid var(--border); background: var(--bg); padding: 14px;
+      font-size: 0.78rem; line-height: 1.8; min-height: 48px; max-height: 200px;
+      overflow-y: auto; color: var(--muted);
     }
     #log .entry { display: flex; gap: 10px; }
-    #log .entry .time { color: #333; flex-shrink: 0; }
+    #log .entry .time { color: #585858; flex-shrink: 0; }
     #log .entry.ok   .msg { color: var(--accent); }
     #log .entry.err  .msg { color: var(--danger); }
     #log .entry.info .msg { color: var(--text); }
 
-    .spin {
-      display: inline-block;
-      width: 12px; height: 12px;
-      border: 2px solid currentColor;
-      border-top-color: transparent;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    hr { border: none; border-top: 1px solid var(--border); }
     .hidden { display: none !important; }
-    .empty { font-size: 0.75rem; color: var(--muted); font-style: italic; }
+    .empty  { font-size: 0.8rem; color: var(--muted); font-style: italic; }
+    .divider { border: none; border-top: 1px solid var(--border); }
   </style>
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <h1>Muse<span>ster</span></h1>
-    <span class="version">v2</span>
+    <div class="header-left">
+      <h1>Muse<span>ster</span></h1>
+      <span class="version">v3</span>
+    </div>
+    <div id="status-bar">
+      <span class="dot"></span>
+      <span id="status-text">Non connecté</span>
+      <button class="btn btn-ghost btn-sm hidden" id="btn-logout"
+        style="margin-left:12px" onclick="logout()">Déconnexion</button>
+    </div>
   </header>
 
-  <!-- Status -->
-  <div id="status-bar">
-    <span class="dot"></span>
-    <span id="status-text">Non connecté</span>
-    <button class="btn btn-ghost hidden" id="btn-logout"
-      style="margin-left:auto;padding:6px 12px;font-size:0.7rem"
-      onclick="logout()">Déconnexion</button>
-  </div>
-
   <!-- Login -->
-  <div class="card" id="card-login">
-    <span class="card-title">Connexion</span>
-    <p style="font-size:0.8rem;color:var(--muted);line-height:1.6">
-      Connecte ton compte Spotify pour commencer à trier tes playlists.
-    </p>
-    <div>
-      <button class="btn btn-primary" onclick="login()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
-        </svg>
-        Se connecter avec Spotify
-      </button>
+  <div class="login-wrap" id="card-login">
+    <div class="card" style="max-width:460px;width:100%">
+      <span class="card-title">Connexion</span>
+      <p class="card-desc">Connecte ton compte Spotify pour commencer à trier tes playlists.</p>
+      <div>
+        <button class="btn btn-primary" onclick="login()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+          Se connecter avec Spotify
+        </button>
+      </div>
     </div>
   </div>
 
-  <!-- Actions -->
-  <div class="hidden" id="card-actions">
+  <!-- Dashboard -->
+  <div id="dashboard" class="dashboard hidden">
 
-    <!-- Generate -->
-    <div class="card">
-      <span class="card-title">Générer une playlist</span>
-      <label>
-        Playlist source (URL ou "liked")
-        <input type="text" id="source-id" placeholder="https://open.spotify.com/playlist/... ou liked" />
-      </label>
-      <label>
-        Nom de la nouvelle playlist
-        <input type="text" id="playlist-name" placeholder="Chill Soir" />
-      </label>
-      <label>
-        Description / prompt
-        <textarea id="playlist-prompt" rows="3" placeholder="Musiques calmes et introspectives pour la fin de soirée"></textarea>
-      </label>
-      <div class="progress-wrap hidden" id="gen-progress-wrap">
-        <div class="progress-bar indeterminate" id="gen-progress"></div>
+    <!-- Colonne gauche : actions -->
+    <div class="col">
+
+      <!-- Générer -->
+      <div class="card">
+        <span class="card-title">Générer</span>
+
+        <!-- Source -->
+        <div class="field" id="field-source">
+          <label>Playlist source (URL ou "liked")</label>
+          <input type="text" id="source-id"
+            placeholder="https://open.spotify.com/playlist/… ou liked"
+            oninput="clearError('field-source'); resetAnchors()"
+            onblur="onSourceBlur()" />
+          <span class="field-error">Ce champ est requis</span>
+        </div>
+
+        <!-- Onglets playlists -->
+        <div class="playlist-tabs-bar">
+          <div class="playlist-tabs" id="playlist-tabs"></div>
+          <button class="tab-add" id="btn-add-playlist" onclick="addPlaylist()" title="Ajouter une playlist">+</button>
+        </div>
+
+        <!-- Contenu de l'onglet actif -->
+        <div id="playlist-panel"></div>
+
+        <!-- Multi-passe (single playlist only) -->
+        <div class="toggle-row" id="toggle-multipass-row">
+          <div class="toggle-label">
+            <span>Multi-passe</span>
+            <small>Passe 1 large → Passe 2 sélective. Utile sur 500+ morceaux.</small>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-multipass" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <!-- Progress -->
+        <div id="gen-loader" class="hidden gen-loader">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span class="phase-label" id="gen-phase-label"></span>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar" id="gen-progress-bar"></div></div>
+          <div class="status-line active" id="gen-status-line"></div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-generate" onclick="generate()">Générer</button>
+        </div>
       </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="btn-generate" onclick="generate()">Générer</button>
+
+      <!-- Synchroniser -->
+      <div class="card">
+        <span class="card-title">Synchroniser</span>
+        <p class="card-desc">
+          Met à jour toutes les playlists <strong style="color:var(--text)">IA-</strong> :
+          ajoute les nouveaux morceaux, supprime ceux retirés de la source.
+        </p>
+
+        <div class="field" id="field-sync-source">
+          <label>Playlist source (URL ou "liked")</label>
+          <input type="text" id="sync-source-id"
+            placeholder="https://open.spotify.com/playlist/… ou liked"
+            oninput="clearError('field-sync-source')" />
+          <span class="field-error">Ce champ est requis</span>
+        </div>
+
+        <div id="sync-loader" class="hidden gen-loader">
+          <div class="progress-wrap"><div class="progress-bar" id="sync-progress-bar"></div></div>
+          <div class="status-line active" id="sync-status-line"></div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="btn-sync" onclick="sync()">Synchroniser</button>
+        </div>
       </div>
+
+      <!-- Log -->
+      <div id="log"></div>
     </div>
 
-    <!-- Sync -->
-    <div class="card" style="margin-top:0">
-      <span class="card-title">Synchroniser</span>
-      <p style="font-size:0.78rem;color:var(--muted);line-height:1.6">
-        Met à jour toutes tes playlists <strong style="color:var(--text)">IA-</strong> :
-        ajoute les nouveaux morceaux et supprime ceux qui ne sont plus dans la source.
-      </p>
-      <label>
-        Playlist source (URL ou "liked")
-        <input type="text" id="sync-source-id" placeholder="https://open.spotify.com/playlist/... ou liked" />
-      </label>
-      <div class="progress-wrap hidden" id="sync-progress-wrap">
-        <div class="progress-bar indeterminate" id="sync-progress"></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-ghost" id="btn-sync" onclick="sync()">Synchroniser</button>
-      </div>
-    </div>
+    <!-- Colonne droite : état -->
+    <div class="col">
 
-    <!-- Playlists IA- -->
-    <div class="card" style="margin-top:0">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <span class="card-title">Playlists générées</span>
-        <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.7rem" onclick="loadPlaylists()">↻</button>
+      <!-- Playlists générées -->
+      <div class="card">
+        <div class="card-row">
+          <span class="card-title">Playlists générées</span>
+          <button class="btn btn-ghost btn-sm" onclick="loadPlaylists()">↻</button>
+        </div>
+        <div class="playlist-list" id="playlist-list">
+          <span class="empty">Chargement…</span>
+        </div>
       </div>
-      <div class="playlist-list" id="playlist-list">
-        <span class="empty">Chargement…</span>
-      </div>
-    </div>
 
-    <!-- Historique -->
-    <div class="card" style="margin-top:0">
-      <span class="card-title">Historique</span>
-      <div class="history-list" id="history-list">
-        <span class="empty">Chargement…</span>
+      <!-- Historique -->
+      <div class="card">
+        <span class="card-title">Historique</span>
+        <div class="history-list" id="history-list">
+          <span class="empty">Chargement…</span>
+        </div>
       </div>
-    </div>
 
+    </div>
   </div>
-
-  <!-- Log -->
-  <div id="log"></div>
 
 </div>
 
 <script>
   const API = ''
 
-  // -------------------------------------------------------------------------
-  // Log
-  // -------------------------------------------------------------------------
+  // ── Log ──────────────────────────────────────────────────────────────────
   function log(msg, type = 'info') {
     const el   = document.getElementById('log')
     const time = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'})
@@ -365,18 +442,23 @@
     el.scrollTop = el.scrollHeight
   }
 
-  // -------------------------------------------------------------------------
-  // Auth
-  // -------------------------------------------------------------------------
+  // ── Validation ───────────────────────────────────────────────────────────
+  function validateFields(fields) {
+    let valid = true
+    for (const { fieldId, value } of fields) {
+      if (!value) { document.getElementById(fieldId).classList.add('error'); valid = false }
+    }
+    return valid
+  }
+  function clearError(fieldId) { document.getElementById(fieldId).classList.remove('error') }
+
+  // ── Auth ─────────────────────────────────────────────────────────────────
   async function checkAuth() {
     try {
       const res  = await fetch(`${API}/auth/me`)
       const data = await res.json()
-      if (res.ok && data.data?.user_id) {
-        setConnected(data.data.user_id)
-      } else {
-        setDisconnected()
-      }
+      if (res.ok && data.data?.user_id) setConnected(data.data.user_id)
+      else setDisconnected()
     } catch { setDisconnected() }
   }
 
@@ -384,8 +466,10 @@
     document.getElementById('status-bar').className = 'connected'
     document.getElementById('status-text').textContent = `Connecté — ${userId}`
     document.getElementById('card-login').classList.add('hidden')
-    document.getElementById('card-actions').classList.remove('hidden')
+    document.getElementById('dashboard').classList.remove('hidden')
     document.getElementById('btn-logout').classList.remove('hidden')
+    renderTabs()
+    renderActivePanel()
     loadPlaylists()
     loadHistory()
   }
@@ -394,98 +478,414 @@
     document.getElementById('status-bar').className = ''
     document.getElementById('status-text').textContent = 'Non connecté'
     document.getElementById('card-login').classList.remove('hidden')
-    document.getElementById('card-actions').classList.add('hidden')
+    document.getElementById('dashboard').classList.add('hidden')
     document.getElementById('btn-logout').classList.add('hidden')
   }
 
   function login()  { window.location.href = '/auth/login' }
-
   async function logout() {
     await fetch(`${API}/auth/logout`)
     setDisconnected()
     log('Déconnecté')
   }
 
-  // -------------------------------------------------------------------------
-  // Generate
-  // -------------------------------------------------------------------------
-  async function generate() {
-    const sourceId = document.getElementById('source-id').value.trim()
-    const name     = document.getElementById('playlist-name').value.trim()
-    const prompt   = document.getElementById('playlist-prompt').value.trim()
+  // ── SSE helper ───────────────────────────────────────────────────────────
+  function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onError }) {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(async res => {
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        onError(data.error || `Erreur ${res.status}`)
+        return
+      }
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer    = ''
 
-    if (!sourceId || !name || !prompt) { log('Remplis tous les champs', 'err'); return }
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop()
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const event = JSON.parse(line.slice(6))
+            if (event.kind === 'status'        && onStatus)       onStatus(event.message)
+            if (event.kind === 'progress'      && onProgress)     onProgress(event.done, event.total, event.phase)
+            if (event.kind === 'playlist_done' && onPlaylistDone) onPlaylistDone(event)
+            if (event.kind === 'done'          && onDone)         onDone(event)
+          } catch {}
+        }
+      }
+    }).catch(e => onError(e.message))
+  }
 
-    const btn = document.getElementById('btn-generate')
-    setLoading(btn, true)
-    showProgress('gen-progress-wrap')
-    log('Génération en cours… (peut prendre 20-60s)')
+  // ── Playlist tabs ─────────────────────────────────────────────────────────
+  let _playlistSlots = [{ id: 0, name: '', prompt: '', anchors: new Map() }]
+  let _nextSlotId    = 1
+  let _activeTab     = 0
+  let _anchorTracks  = []
+  let _anchorLoadedFor = ''
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+  }
+
+  function _activeSlot() { return _playlistSlots[_activeTab] }
+
+  function renderTabs() {
+    const tabsEl = document.getElementById('playlist-tabs')
+    tabsEl.innerHTML = ''
+    _playlistSlots.forEach((slot, i) => {
+      const label  = slot.name.trim() || `Playlist ${i + 1}`
+      const active = i === _activeTab ? ' active' : ''
+      const btn    = document.createElement('button')
+      btn.className = `pl-tab${active}`
+      btn.innerHTML = `<span>${esc(label)}</span>`
+      if (_playlistSlots.length > 1) {
+        const x = document.createElement('span')
+        x.className = 'tab-close'
+        x.textContent = '×'
+        x.title = 'Supprimer'
+        x.addEventListener('click', e => { e.stopPropagation(); removePlaylist(slot.id) })
+        btn.appendChild(x)
+      }
+      btn.addEventListener('click', () => switchTab(i))
+      tabsEl.appendChild(btn)
+    })
+    document.getElementById('btn-add-playlist').disabled = _playlistSlots.length >= 3
+  }
+
+  function renderActivePanel() {
+    const slot  = _activeSlot()
+    const panel = document.getElementById('playlist-panel')
+
+    const anchorBody = _anchorTracks.length === 0
+      ? `<span class="anchor-loading">Entre d'abord une playlist source pour charger les morceaux.</span>`
+      : ''
+
+    panel.innerHTML = `
+      <div class="field" id="field-pl-name-${slot.id}">
+        <label>Nom</label>
+        <input type="text" id="pl-name-${slot.id}" placeholder="Chill Soir"
+          oninput="onNameInput(${slot.id})" />
+        <span class="field-error">Ce champ est requis</span>
+      </div>
+      <div class="field" id="field-pl-prompt-${slot.id}">
+        <label>Prompt</label>
+        <textarea id="pl-prompt-${slot.id}" rows="3"
+          placeholder="Musiques calmes et introspectives pour la fin de soirée"
+          oninput="onPromptInput(${slot.id})"></textarea>
+        <span class="field-error">Ce champ est requis</span>
+      </div>
+      <div class="anchor-section">
+        <div class="anchor-header">
+          <span class="anchor-label">Anchors — morceaux de référence</span>
+          <span class="anchor-count"><span class="count-num" id="anchor-count-num">0</span> sélectionné(s)</span>
+        </div>
+        <p class="anchor-hint">
+          Sélectionne des morceaux qui correspondent <strong>exactement</strong> à ce que tu veux.
+          GPT les utilise comme étalon pour les cas limites. <strong>Recommandé : min. 5.</strong>
+        </p>
+        <div id="anchor-recap" class="anchor-recap hidden-recap"></div>
+        <input type="text" class="anchor-search" id="anchor-search"
+          placeholder="Rechercher un titre ou un artiste…"
+          oninput="filterAnchorGrid(this.value)" />
+        <div id="anchor-grid" class="anchor-grid">${anchorBody}</div>
+      </div>`
+
+    // Restore saved values
+    document.getElementById(`pl-name-${slot.id}`).value   = slot.name
+    document.getElementById(`pl-prompt-${slot.id}`).value = slot.prompt
+
+    if (_anchorTracks.length) {
+      renderAnchorGrid(_anchorTracks)
+      _renderRecap()
+      _updateAnchorMeta()
+    }
+  }
+
+  function onNameInput(slotId) {
+    const slot = _playlistSlots.find(s => s.id === slotId)
+    if (!slot) return
+    slot.name = document.getElementById(`pl-name-${slotId}`).value
+    clearError(`field-pl-name-${slotId}`)
+    renderTabs()
+  }
+
+  function onPromptInput(slotId) {
+    const slot = _playlistSlots.find(s => s.id === slotId)
+    if (!slot) return
+    slot.prompt = document.getElementById(`pl-prompt-${slotId}`).value
+    clearError(`field-pl-prompt-${slotId}`)
+  }
+
+  function switchTab(tabIdx) {
+    _activeTab = tabIdx
+    renderTabs()
+    renderActivePanel()
+  }
+
+  function addPlaylist() {
+    if (_playlistSlots.length >= 3) return
+    const id = _nextSlotId++
+    _playlistSlots.push({ id, name: '', prompt: '', anchors: new Map() })
+    _activeTab = _playlistSlots.length - 1
+    renderTabs()
+    renderActivePanel()
+  }
+
+  function removePlaylist(slotId) {
+    const idx = _playlistSlots.findIndex(s => s.id === slotId)
+    if (idx === -1) return
+    _playlistSlots.splice(idx, 1)
+    _activeTab = Math.min(_activeTab, _playlistSlots.length - 1)
+    renderTabs()
+    renderActivePanel()
+  }
+
+  // ── Anchors ───────────────────────────────────────────────────────────────
+  function resetAnchors() {
+    _anchorLoadedFor = ''
+    _anchorTracks    = []
+    _playlistSlots.forEach(s => s.anchors.clear())
+    renderActivePanel()
+  }
+
+  async function onSourceBlur() {
+    const source = document.getElementById('source-id').value.trim()
+    if (!source || source === _anchorLoadedFor) return
+    _anchorLoadedFor = source
+    _playlistSlots.forEach(s => s.anchors.clear())
+
+    const grid = document.getElementById('anchor-grid')
+    if (grid) grid.innerHTML = '<span class="anchor-loading">Chargement des morceaux…</span>'
 
     try {
-      const res  = await fetch(`${API}/generate`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ source_id: sourceId, playlist_name: name, playlist_prompt: prompt }),
-      })
+      const res  = await fetch(`${API}/source-tracks?source_id=${encodeURIComponent(source)}`)
       const data = await res.json()
-      if (res.ok) {
-        const d = data.data
-        log(`✓ Playlist créée — ${d.selected_songs}/${d.checked_songs} morceaux (${d.execution_time})`, 'ok')
-        log(`  ID : ${d.playlist_id}`, 'ok')
+      if (!res.ok || !data.data?.length) {
+        if (grid) grid.innerHTML = '<span class="anchor-loading">Aucun morceau trouvé</span>'
+        return
+      }
+      _anchorTracks = data.data
+      renderAnchorGrid(_anchorTracks)
+      _renderRecap()
+      _updateAnchorMeta()
+    } catch {
+      const g = document.getElementById('anchor-grid')
+      if (g) g.innerHTML = '<span class="anchor-loading">Erreur de chargement</span>'
+    }
+  }
+
+  function renderAnchorGrid(tracks) {
+    const slot      = _activeSlot()
+    const selectedM = slot ? slot.anchors : new Map()
+    const grid      = document.getElementById('anchor-grid')
+    if (!grid) return
+    grid.innerHTML = ''
+    if (!tracks.length) {
+      grid.innerHTML = '<span class="anchor-loading">Aucun résultat</span>'
+      return
+    }
+    tracks.forEach(t => {
+      const card = document.createElement('div')
+      card.className = 'anchor-card' + (selectedM.has(t.id) ? ' selected' : '')
+      card.id        = `ac-${t.id}`
+      card.innerHTML = t.cover_url
+        ? `<img src="${t.cover_url}" alt="" loading="lazy" />`
+        : `<div style="width:64px;height:64px;background:var(--border)"></div>`
+      card.innerHTML += `<span class="ac-title" title="${esc(t.title)}">${esc(t.title)}</span>`
+      card.innerHTML += `<span class="ac-artist" title="${esc(t.artists)}">${esc(t.artists)}</span>`
+      card.addEventListener('click', () => toggleAnchor(t))
+      grid.appendChild(card)
+    })
+  }
+
+  function filterAnchorGrid(query) {
+    const q = query.trim().toLowerCase()
+    renderAnchorGrid(q
+      ? _anchorTracks.filter(t =>
+          t.title.toLowerCase().includes(q) || t.artists.toLowerCase().includes(q))
+      : _anchorTracks
+    )
+  }
+
+  function toggleAnchor(t) {
+    const slot = _activeSlot()
+    if (!slot) return
+    if (slot.anchors.has(t.id)) slot.anchors.delete(t.id)
+    else slot.anchors.set(t.id, { id: t.id, title: t.title, artists: t.artists })
+    const card = document.getElementById(`ac-${t.id}`)
+    if (card) card.classList.toggle('selected', slot.anchors.has(t.id))
+    _updateAnchorMeta()
+    _renderRecap()
+  }
+
+  function _updateAnchorMeta() {
+    const slot = _activeSlot()
+    const n    = slot ? slot.anchors.size : 0
+    const cnt  = document.getElementById('anchor-count-num')
+    if (!cnt) return
+    cnt.textContent = n
+    cnt.className   = 'count-num' + (n > 0 && n < 5 ? ' warn' : '')
+  }
+
+  function _renderRecap() {
+    const slot  = _activeSlot()
+    const recap = document.getElementById('anchor-recap')
+    if (!recap) return
+    if (!slot || slot.anchors.size === 0) {
+      recap.className = 'anchor-recap hidden-recap'
+      recap.innerHTML = ''
+      return
+    }
+    recap.className = 'anchor-recap'
+    recap.innerHTML = ''
+    for (const t of slot.anchors.values()) {
+      const chip = document.createElement('div')
+      chip.className = 'anchor-chip'
+      chip.title     = `${t.title} — ${t.artists}`
+      const raw  = _anchorTracks.find(a => a.id === t.id)
+      chip.innerHTML = raw?.cover_url
+        ? `<img src="${raw.cover_url}" alt="" />`
+        : `<div class="chip-placeholder"></div>`
+      chip.innerHTML += `<span class="chip-name">${esc(t.title)}</span><span class="chip-x">×</span>`
+      chip.addEventListener('click', () => toggleAnchor(t))
+      recap.appendChild(chip)
+    }
+  }
+
+  // ── Generate ─────────────────────────────────────────────────────────────
+  function generate() {
+    const sourceId  = document.getElementById('source-id').value.trim()
+    const multiPass = document.getElementById('toggle-multipass').checked
+
+    let valid          = validateFields([{ fieldId: 'field-source', value: sourceId }])
+    let firstErrorTab  = -1
+
+    const playlists = _playlistSlots.map((slot, i) => {
+      if (!slot.name.trim() || !slot.prompt.trim()) {
+        if (firstErrorTab === -1) firstErrorTab = i
+        valid = false
+      }
+      return { name: slot.name.trim(), prompt: slot.prompt.trim(), anchors: Array.from(slot.anchors.values()) }
+    })
+
+    if (!valid) {
+      if (firstErrorTab !== -1) {
+        switchTab(firstErrorTab)
+        const slot = _playlistSlots[firstErrorTab]
+        if (!slot.name.trim())   document.getElementById(`field-pl-name-${slot.id}`)?.classList.add('error')
+        if (!slot.prompt.trim()) document.getElementById(`field-pl-prompt-${slot.id}`)?.classList.add('error')
+      }
+      return
+    }
+
+    const btn        = document.getElementById('btn-generate')
+    const loader     = document.getElementById('gen-loader')
+    const progressEl = document.getElementById('gen-progress-bar')
+    const statusEl   = document.getElementById('gen-status-line')
+    const phaseEl    = document.getElementById('gen-phase-label')
+
+    btn.disabled         = true
+    btn.textContent      = 'En cours…'
+    loader.classList.remove('hidden')
+    progressEl.className = 'progress-bar indeterminate'
+    statusEl.textContent = 'Connexion…'
+    phaseEl.textContent  = ''
+
+    runSSE({
+      url:  `${API}/generate`,
+      body: { source_id: sourceId, playlists, multi_pass: multiPass },
+
+      onStatus: msg => { statusEl.textContent = msg; log(msg) },
+
+      onProgress: (done, total, phase) => {
+        progressEl.className   = 'progress-bar'
+        progressEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
+        if (phase === 1) phaseEl.textContent = 'Passe 1 — filtrage large'
+        else if (phase === 2) phaseEl.textContent = 'Passe 2 — sélection fine'
+        else phaseEl.textContent = ''
+      },
+
+      onDone: data => {
+        progressEl.className   = 'progress-bar'
+        progressEl.style.width = '100%'
+        statusEl.textContent   = '✓ Terminé'
+        phaseEl.textContent    = ''
+        const results = data.results || []
+        results.forEach(r => {
+          log(`✓ IA-${r.playlist_name} — ${r.selected_songs}/${r.checked_songs} morceaux retenus`, 'ok')
+        })
         loadPlaylists()
         loadHistory()
-      } else {
-        log(`✗ ${data.error}`, 'err')
-      }
-    } catch (e) {
-      log(`✗ Erreur réseau : ${e.message}`, 'err')
-    } finally {
-      setLoading(btn, false)
-      hideProgress('gen-progress-wrap')
-    }
+        setTimeout(() => { loader.classList.add('hidden'); btn.disabled = false; btn.textContent = 'Générer' }, 1500)
+      },
+
+      onError: err => {
+        progressEl.className = 'progress-bar'
+        loader.classList.add('hidden')
+        btn.disabled         = false
+        btn.textContent      = 'Générer'
+        log(`✗ ${err}`, 'err')
+      },
+    })
   }
 
-  // -------------------------------------------------------------------------
-  // Sync
-  // -------------------------------------------------------------------------
-  async function sync() {
+  // ── Sync ─────────────────────────────────────────────────────────────────
+  function sync() {
     const sourceId = document.getElementById('sync-source-id').value.trim()
-    if (!sourceId) { log('Renseigne la playlist source', 'err'); return }
+    if (!validateFields([{ fieldId: 'field-sync-source', value: sourceId }])) return
 
-    const btn = document.getElementById('btn-sync')
-    setLoading(btn, true)
-    showProgress('sync-progress-wrap')
-    log('Synchronisation en cours…')
+    const btn        = document.getElementById('btn-sync')
+    const loader     = document.getElementById('sync-loader')
+    const progressEl = document.getElementById('sync-progress-bar')
+    const statusEl   = document.getElementById('sync-status-line')
 
-    try {
-      const res  = await fetch(`${API}/sync`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ source_id: sourceId }),
-      })
-      const data = await res.json()
-      if (res.ok) {
+    btn.disabled         = true
+    btn.textContent      = 'En cours…'
+    loader.classList.remove('hidden')
+    progressEl.className = 'progress-bar indeterminate'
+    statusEl.textContent = 'Connexion…'
+
+    runSSE({
+      url:  `${API}/sync`,
+      body: { source_id: sourceId },
+      onStatus: msg => { statusEl.textContent = msg; log(msg) },
+      onProgress: (done, total) => {
+        progressEl.className   = 'progress-bar'
+        progressEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
+      },
+      onPlaylistDone: v => { log(`  ${v.name} : +${v.added} / -${v.removed}`, 'ok') },
+      onDone: data => {
+        progressEl.className   = 'progress-bar'
+        progressEl.style.width = '100%'
+        statusEl.textContent   = '✓ Synchronisation terminée'
+        const results = data.results || {}
         let added = 0, removed = 0
-        for (const v of Object.values(data.data)) { added += v.added||0; removed += v.removed||0 }
-        log(`✓ Sync terminée — +${added} / -${removed} morceaux (${data.execution_time})`, 'ok')
-        for (const v of Object.values(data.data)) {
-          if (v.name) log(`  ${v.name} : +${v.added} / -${v.removed}`, 'ok')
-        }
+        for (const v of Object.values(results)) { added += v.added||0; removed += v.removed||0 }
+        log(`✓ Sync terminée — +${added} / -${removed} morceaux`, 'ok')
         loadPlaylists()
-      } else {
-        log(`✗ ${data.error}`, 'err')
-      }
-    } catch (e) {
-      log(`✗ Erreur réseau : ${e.message}`, 'err')
-    } finally {
-      setLoading(btn, false)
-      hideProgress('sync-progress-wrap')
-    }
+        loadHistory()
+        setTimeout(() => { loader.classList.add('hidden'); btn.disabled = false; btn.textContent = 'Synchroniser' }, 1500)
+      },
+      onError: err => {
+        progressEl.className = 'progress-bar'
+        loader.classList.add('hidden')
+        btn.disabled         = false
+        btn.textContent      = 'Synchroniser'
+        log(`✗ ${err}`, 'err')
+      },
+    })
   }
 
-  // -------------------------------------------------------------------------
-  // Playlists
-  // -------------------------------------------------------------------------
+  // ── Playlists ─────────────────────────────────────────────────────────────
   async function loadPlaylists() {
     const container = document.getElementById('playlist-list')
     try {
@@ -497,67 +897,96 @@
       }
       container.innerHTML = data.data.map(p => `
         <div class="playlist-item">
-          <span class="pi-name">${p.name}</span>
-          <span class="pi-prompt">${p.prompt || '—'}</span>
+          <div class="pi-header">
+            <span class="pi-name">${p.name}</span>
+            <button class="btn btn-ghost btn-sm" onclick="toggleEditPrompt('${p.id}')">✎</button>
+          </div>
+          <span class="pi-prompt" id="pi-prompt-${p.id}">${p.prompt || '—'}</span>
           <div class="pi-meta">
             <span>${p.track_count} morceaux</span>
             <span>sync : ${p.last_sync ? formatDate(p.last_sync) : 'jamais'}</span>
           </div>
-        </div>
-      `).join('')
+          <div class="pi-edit-wrap" id="pi-edit-${p.id}">
+            <div class="field" id="pi-field-${p.id}">
+              <label>Nouveau prompt</label>
+              <textarea rows="2" id="pi-input-${p.id}" style="font-size:0.82rem">${p.prompt || ''}</textarea>
+              <span class="field-error">Le prompt ne peut pas être vide</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" onclick="savePrompt('${p.id}')">Sauvegarder</button>
+              <button class="btn btn-ghost btn-sm" onclick="toggleEditPrompt('${p.id}')">Annuler</button>
+            </div>
+          </div>
+        </div>`).join('')
     } catch {
       container.innerHTML = '<span class="empty">Erreur de chargement</span>'
     }
   }
 
-  // -------------------------------------------------------------------------
-  // History
-  // -------------------------------------------------------------------------
+  function toggleEditPrompt(id) {
+    document.getElementById(`pi-edit-${id}`).classList.toggle('open')
+    document.getElementById(`pi-field-${id}`).classList.remove('error')
+  }
+
+  async function savePrompt(id) {
+    const prompt = document.getElementById(`pi-input-${id}`).value.trim()
+    if (!prompt) { document.getElementById(`pi-field-${id}`).classList.add('error'); return }
+    try {
+      const res = await fetch(`${API}/playlists/${id}/prompt`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      })
+      if (res.ok) {
+        document.getElementById(`pi-prompt-${id}`).textContent = prompt
+        toggleEditPrompt(id)
+        log('✓ Prompt mis à jour', 'ok')
+      } else { log('✗ Erreur lors de la mise à jour du prompt', 'err') }
+    } catch (e) { log(`✗ ${e.message}`, 'err') }
+  }
+
+  // ── History ───────────────────────────────────────────────────────────────
   async function loadHistory() {
     const container = document.getElementById('history-list')
     try {
       const res  = await fetch(`${API}/history`)
       const data = await res.json()
       if (!res.ok || !data.data?.length) {
-        container.innerHTML = '<span class="empty">Aucune génération pour l\'instant</span>'
+        container.innerHTML = '<span class="empty">Aucune action pour l\'instant</span>'
         return
       }
-      container.innerHTML = data.data.map(h => `
-        <div class="history-item">
-          <div class="hi-left">
-            <span class="hi-name">IA-${h.playlist_name}</span>
-            <span class="hi-prompt">${h.prompt}</span>
-          </div>
-          <div class="hi-right">
-            <span class="hi-count">${h.selected_songs}/${h.checked_songs}</span>
-            <span class="hi-date">${formatDate(h.created_at)}</span>
-          </div>
-        </div>
-      `).join('')
+      container.innerHTML = data.data.map(h => {
+        const isGen  = h.action === 'generate'
+        const name   = h.playlist_name || h.playlist_id || '—'
+        const count  = isGen
+          ? `${h.selected_songs}/${h.checked_songs}`
+          : `+${h.selected_songs||0} / -${h.removed_songs||0}`
+        const detail = isGen ? (h.prompt || '') : `sync — ${h.checked_songs||0} vérifiés`
+        return `
+          <div class="history-item">
+            <span class="hi-badge ${h.action}">${h.action}</span>
+            <div class="hi-left">
+              <span class="hi-name">${isGen ? 'IA-' : ''}${name}</span>
+              <span class="hi-prompt">${detail}</span>
+            </div>
+            <div class="hi-right">
+              <span class="hi-count">${count}</span>
+              <span class="hi-date">${formatDate(h.created_at)}</span>
+            </div>
+          </div>`
+      }).join('')
     } catch {
       container.innerHTML = '<span class="empty">Erreur de chargement</span>'
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Helpers
-  // -------------------------------------------------------------------------
-  function setLoading(btn, loading) {
-    btn.disabled = loading
-    const s = btn.querySelector('.spin')
-    if (loading && !s) btn.insertAdjacentHTML('afterbegin', '<span class="spin"></span>')
-    if (!loading && s) s.remove()
-  }
-
-  function showProgress(id) { document.getElementById(id).classList.remove('hidden') }
-  function hideProgress(id) { document.getElementById(id).classList.add('hidden') }
-
+  // ── Helpers ───────────────────────────────────────────────────────────────
   function formatDate(iso) {
     if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})
+    return new Date(iso).toLocaleDateString('fr-FR', {
+      day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
+    })
   }
 
-  // Callback error
   const params = new URLSearchParams(window.location.search)
   if (params.get('error')) {
     log(`✗ Erreur Spotify : ${params.get('error')}`, 'err')

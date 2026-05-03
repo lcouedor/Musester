@@ -7,6 +7,7 @@ class Track:
     artists: str
     album: str
     added_at: str = None
+    cover_url: str = None
 
 @dataclass
 class Decision:
