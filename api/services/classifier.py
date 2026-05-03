@@ -118,11 +118,11 @@ class ClassifierService:
         prompt = f"Listening context: {description}\n"
 
         if anchors:
-            prompt += "\nReference examples (these songs MUST fit — use them to calibrate your judgment):\n"
+            prompt += "\nConfirmed inclusions (these songs ARE in the playlist — do not evaluate them):\n"
             prompt += "\n".join(f'- "{a.title}" by {a.artists}' for a in anchors)
-            prompt += "\n"
+            prompt += "\nEvaluate every candidate by asking: does it fit naturally alongside these confirmed tracks?\n"
 
-        prompt += "\nSongs to evaluate:\n"
+        prompt += "\nCandidates to evaluate:\n"
         prompt += "\n".join(
             f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
             for t in batch
