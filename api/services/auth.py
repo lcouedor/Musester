@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sqlite3
@@ -10,7 +9,7 @@ import config
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'tokens.db')
+DB_PATH      = os.path.join(os.path.dirname(__file__), '..', 'tokens.db')
 HISTORY_PATH = os.path.join(os.path.dirname(__file__), '..', 'history.db')
 
 SPOTIFY_AUTH_URL  = "https://accounts.spotify.com/authorize"
@@ -34,28 +33,68 @@ def init_db():
             )
         """)
     with _get_conn(HISTORY_PATH) as conn:
+        # Table historique unifiée generate + sync
         conn.execute("""
             CREATE TABLE IF NOT EXISTS history (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id        TEXT NOT NULL,
+                action         TEXT NOT NULL,
                 created_at     TEXT NOT NULL,
-                playlist_id    TEXT NOT NULL,
-                playlist_name  TEXT NOT NULL,
-                prompt         TEXT NOT NULL,
-                checked_songs  INTEGER NOT NULL,
-                selected_songs INTEGER NOT NULL,
-                execution_time TEXT NOT NULL
+                playlist_id    TEXT,
+                playlist_name  TEXT,
+                prompt         TEXT,
+                checked_songs  INTEGER,
+                selected_songs INTEGER,
+                removed_songs  INTEGER,
+                execution_time TEXT
+            )
+        """)
+        # Table prompts — source de vérité pour les prompts GPT
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS playlist_prompts (
+                playlist_id TEXT PRIMARY KEY,
+                user_id     TEXT NOT NULL,
+                prompt      TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
             )
         """)
     logger.info("DBs ready")
 
 
-def save_history(user_id: str, entry: dict):
+# ---------------------------------------------------------------------------
+# Prompts
+# ---------------------------------------------------------------------------
+
+def save_playlist_prompt(user_id: str, playlist_id: str, prompt: str):
+    with _get_conn(HISTORY_PATH) as conn:
+        conn.execute("""
+            INSERT INTO playlist_prompts (playlist_id, user_id, prompt, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(playlist_id) DO UPDATE SET
+                prompt     = excluded.prompt,
+                updated_at = excluded.updated_at
+        """, (playlist_id, user_id, prompt))
+
+
+def get_playlist_prompt(playlist_id: str) -> Optional[str]:
+    with _get_conn(HISTORY_PATH) as conn:
+        row = conn.execute(
+            "SELECT prompt FROM playlist_prompts WHERE playlist_id = ?", (playlist_id,)
+        ).fetchone()
+    return row["prompt"] if row else None
+
+
+# ---------------------------------------------------------------------------
+# History
+# ---------------------------------------------------------------------------
+
+def save_generate(user_id: str, entry: dict):
     with _get_conn(HISTORY_PATH) as conn:
         conn.execute("""
             INSERT INTO history
-                (user_id, created_at, playlist_id, playlist_name, prompt, checked_songs, selected_songs, execution_time)
-            VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?)
+                (user_id, action, created_at, playlist_id, playlist_name, prompt,
+                 checked_songs, selected_songs, execution_time)
+            VALUES (?, 'generate', datetime('now'), ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             entry['playlist_id'],
@@ -67,14 +106,37 @@ def save_history(user_id: str, entry: dict):
         ))
 
 
+def save_sync(user_id: str, results: dict, execution_time: str):
+    with _get_conn(HISTORY_PATH) as conn:
+        for pid, v in results.items():
+            conn.execute("""
+                INSERT INTO history
+                    (user_id, action, created_at, playlist_id, playlist_name,
+                     checked_songs, selected_songs, removed_songs, execution_time)
+                VALUES (?, 'sync', datetime('now'), ?, ?, ?, ?, ?, ?)
+            """, (
+                user_id,
+                pid,
+                v.get('name', ''),
+                v.get('checked', 0),
+                v.get('added', 0),
+                v.get('removed', 0),
+                execution_time,
+            ))
+
+
 def get_history(user_id: str) -> list:
     with _get_conn(HISTORY_PATH) as conn:
         rows = conn.execute("""
             SELECT * FROM history WHERE user_id = ?
-            ORDER BY created_at DESC LIMIT 20
+            ORDER BY created_at DESC LIMIT 30
         """, (user_id,)).fetchall()
     return [dict(r) for r in rows]
 
+
+# ---------------------------------------------------------------------------
+# OAuth
+# ---------------------------------------------------------------------------
 
 def get_auth_url(state: str) -> str:
     params = {

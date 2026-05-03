@@ -1,30 +1,13 @@
 import logging
-from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
 
 from core.models import Track
 import config
 
 logger = logging.getLogger(__name__)
-
-CREATED_SEPARATOR = "| created:"
-
-
-def _format_description(prompt: str) -> str:
-    ts = datetime.now(timezone.utc).isoformat()
-    return f"{prompt} {CREATED_SEPARATOR}{ts}"
-
-
-def _parse_description(raw: str) -> tuple:
-    """Retourne (prompt_clean, created_at | None)"""
-    if CREATED_SEPARATOR not in raw:
-        return raw.strip(), None
-    prompt, _, meta = raw.partition(CREATED_SEPARATOR)
-    return prompt.strip(), meta.strip()
 
 
 class SpotifyService:
@@ -92,29 +75,32 @@ class SpotifyService:
         logger.info("Found %d generated playlists", len(generated))
         return generated
 
-    def get_playlist_prompt(self, playlist_id: str) -> str:
-        raw    = self._client.playlist(playlist_id)['description']
-        prompt, _ = _parse_description(raw)
-        return prompt
-
     def get_playlist_created_at(self, playlist_id: str) -> Optional[str]:
-        raw = self._client.playlist(playlist_id)['description']
-        _, created_at = _parse_description(raw)
-        return created_at
+        """Retourne la date du morceau ajouté en dernier, ou None."""
+        tracks = self.get_tracks(playlist_id, extended=True)
+        if not tracks:
+            return None
+        return min(t.added_at for t in tracks)
 
-    def create_playlist(self, name: str, prompt: str, track_ids: list) -> str:
-        sp          = self._client
-        user_id     = sp.current_user()['id']
-        description = _format_description(prompt)
-        playlist    = sp.user_playlist_create(
+    def create_playlist(self, name: str, track_ids: list) -> str:
+        """Crée une playlist sans description — le prompt est en DB."""
+        sp      = self._client
+        user_id = sp.current_user()['id']
+        playlist = sp.user_playlist_create(
             user=user_id,
             name=config.PLAYLIST_PREFIX + name,
             public=False,
-            description=description,
+            description='',
         )
         self._bulk_add(playlist['id'], track_ids)
         logger.info("Created playlist '%s' with %d tracks", name, len(track_ids))
         return playlist['id']
+
+    def clear_playlist(self, playlist_id: str):
+        """Vide complètement une playlist."""
+        tracks = self.get_tracks(playlist_id)
+        if tracks:
+            self.remove_from_playlist(playlist_id, [t.id for t in tracks])
 
     def add_to_playlist(self, playlist_id: str, track_ids: list):
         self._bulk_add(playlist_id, track_ids)

@@ -5,10 +5,14 @@ import time
 from functools import wraps
 from typing import Optional
 
-from flask import Blueprint, request, jsonify, redirect, session
+from flask import Blueprint, request, jsonify, redirect, session, Response, stream_with_context
 
-from core.playlist import generate_playlist, sync_all_playlists
-from services.auth import get_auth_url, exchange_code, save_token, get_valid_token, save_history, get_history
+from core.playlist import generate_playlist_stream, sync_all_playlists_stream
+from services.auth import (
+    get_auth_url, exchange_code, save_token, get_valid_token,
+    save_generate, save_sync, get_history,
+    save_playlist_prompt, get_playlist_prompt,
+)
 from services.spotify import SpotifyService
 import config
 
@@ -44,7 +48,7 @@ def require_auth(f):
 def _elapsed(start: float) -> str:
     return f"{round(time.time() - start, 2)}s"
 
-def _ok(data: dict, start: float = None) -> tuple:
+def _ok(data, start: float = None) -> tuple:
     resp = {'error': None, 'data': data}
     if start is not None:
         resp['execution_time'] = _elapsed(start)
@@ -113,7 +117,7 @@ def me():
 
 
 # ---------------------------------------------------------------------------
-# API routes
+# SSE routes
 # ---------------------------------------------------------------------------
 
 @bp.route('/generate', methods=['POST'])
@@ -127,22 +131,41 @@ def generate(access_token: str):
     if not all([source_id, name, prompt]):
         return _err('Missing required parameters: source_id, playlist_name, playlist_prompt')
 
-    start  = time.time()
-    result = generate_playlist(access_token, _parse_id(source_id), name, prompt)
-    elapsed = _elapsed(start)
+    user_id = session.get('user_id')
+    start   = time.time()
 
-    # Sauvegarde dans l'historique
-    save_history(session['user_id'], {
-        'playlist_id':    result['playlist_id'],
-        'playlist_name':  name,
-        'prompt':         prompt,
-        'checked_songs':  result['checked_songs'],
-        'selected_songs': result['selected_songs'],
-        'execution_time': elapsed,
-    })
+    def stream():
+        result = {}
+        for event in generate_playlist_stream(access_token, _parse_id(source_id), name, prompt, user_id):
+            yield event
+            # Récupérer les données du dernier event 'done'
+            import json as _json
+            try:
+                data = _json.loads(event.removeprefix('data: ').strip())
+                if data.get('kind') == 'done':
+                    result.update(data)
+            except Exception:
+                pass
 
-    result['execution_time'] = elapsed
-    return _ok(result)
+        # Sauvegarder dans l'historique après le stream
+        if result.get('playlist_id'):
+            save_generate(user_id, {
+                'playlist_id':    result['playlist_id'],
+                'playlist_name':  name,
+                'prompt':         prompt,
+                'checked_songs':  result.get('checked_songs', 0),
+                'selected_songs': result.get('selected_songs', 0),
+                'execution_time': _elapsed(start),
+            })
+
+    return Response(
+        stream_with_context(stream()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control':    'no-cache',
+            'X-Accel-Buffering': 'no',
+        }
+    )
 
 
 @bp.route('/sync', methods=['POST'])
@@ -154,24 +177,50 @@ def sync(access_token: str):
     if not source_id:
         return _err('Missing required parameter: source_id')
 
-    start  = time.time()
-    result = sync_all_playlists(access_token, _parse_id(source_id))
-    return _ok(result, start)
+    user_id = session.get('user_id')
+    start   = time.time()
 
+    def stream():
+        results = {}
+        for event in sync_all_playlists_stream(access_token, _parse_id(source_id)):
+            yield event
+            import json as _json
+            try:
+                data = _json.loads(event.removeprefix('data: ').strip())
+                if data.get('kind') == 'done':
+                    results.update(data.get('results', {}))
+            except Exception:
+                pass
+
+        if results:
+            save_sync(user_id, results, _elapsed(start))
+
+    return Response(
+        stream_with_context(stream()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control':    'no-cache',
+            'X-Accel-Buffering': 'no',
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Playlists
+# ---------------------------------------------------------------------------
 
 @bp.route('/playlists', methods=['GET'])
 @require_auth
 def playlists(access_token: str):
-    """Retourne les playlists IA- de l'utilisateur avec leur prompt et dernière sync."""
     spotify   = SpotifyService(access_token)
     generated = spotify.get_user_generated_playlists()
     result    = []
 
     for p in generated:
-        pid          = p['id']
-        prompt       = spotify.get_playlist_prompt(pid)
-        tracks       = spotify.get_tracks(pid, extended=True)
-        last_sync    = max((t.added_at for t in tracks), default=None)
+        pid       = p['id']
+        prompt    = get_playlist_prompt(pid) or ''
+        tracks    = spotify.get_tracks(pid, extended=True)
+        last_sync = max((t.added_at for t in tracks), default=None)
         result.append({
             'id':          pid,
             'name':        p['name'],
@@ -182,6 +231,26 @@ def playlists(access_token: str):
 
     return _ok(result)
 
+
+@bp.route('/playlists/<playlist_id>/prompt', methods=['PUT'])
+@require_auth
+def update_prompt(access_token: str, playlist_id: str):
+    """Met à jour le prompt d'une playlist existante en DB."""
+    body   = request.json or {}
+    prompt = body.get('prompt')
+
+    if not prompt:
+        return _err('Missing required parameter: prompt')
+
+    user_id = session.get('user_id')
+    save_playlist_prompt(user_id, playlist_id, prompt)
+    logger.info("Prompt updated for playlist '%s'", playlist_id)
+    return _ok({'playlist_id': playlist_id, 'prompt': prompt})
+
+
+# ---------------------------------------------------------------------------
+# History
+# ---------------------------------------------------------------------------
 
 @bp.route('/history', methods=['GET'])
 @require_auth
