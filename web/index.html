@@ -134,16 +134,35 @@
     .phase-label   { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
     .gen-loader    { display: flex; flex-direction: column; gap: 6px; }
 
-    /* ── Playlist slots ── */
-    .pl-slots { display: flex; flex-direction: column; gap: 10px; }
-    .pl-slot {
-      border: 1px solid var(--border); background: var(--bg);
-      padding: 14px; display: flex; flex-direction: column; gap: 10px;
+    /* ── Playlist tabs ── */
+    .playlist-tabs-bar {
+      display: flex; align-items: center; gap: 0;
+      border-bottom: 2px solid var(--border);
     }
-    .pl-slot-header {
-      display: flex; align-items: center; justify-content: space-between;
+    .playlist-tabs { display: flex; align-items: center; gap: 2px; flex: 1; }
+    .pl-tab {
+      display: flex; align-items: center; gap: 7px;
+      padding: 8px 14px; cursor: pointer; font-family: var(--mono); font-size: 0.8rem;
+      color: var(--muted); background: transparent; border: none;
+      border-bottom: 2px solid transparent; margin-bottom: -2px;
+      transition: all 0.15s; white-space: nowrap; user-select: none;
     }
-    .pl-slot-label { font-size: 0.8rem; color: var(--text); font-weight: 500; }
+    .pl-tab:hover { color: var(--text); }
+    .pl-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab-close {
+      background: none; border: none; color: #585858; cursor: pointer; font-size: 1rem;
+      padding: 0; line-height: 1; font-family: var(--mono); transition: color 0.15s;
+      display: flex; align-items: center;
+    }
+    .tab-close:hover { color: var(--danger); }
+    .tab-add {
+      font-family: var(--mono); font-size: 1.3rem; font-weight: 400; line-height: 1;
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      padding: 4px 12px 8px; margin-bottom: -2px; transition: color 0.15s;
+    }
+    .tab-add:hover:not(:disabled) { color: var(--accent); }
+    .tab-add:disabled { opacity: 0.3; cursor: not-allowed; }
+    .playlist-panel { display: flex; flex-direction: column; gap: 14px; padding-top: 16px; }
 
     /* ── Toggle ── */
     .toggle-row {
@@ -176,21 +195,8 @@
     .anchor-hint    { font-size: 0.78rem; color: var(--muted); line-height: 1.55; }
     .anchor-hint strong { color: var(--text); }
 
-    .anchor-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-    .anchor-tab {
-      font-family: var(--mono); font-size: 0.72rem; font-weight: 500;
-      letter-spacing: 0.04em; padding: 4px 12px; border: 1px solid var(--border);
-      background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s;
-    }
-    .anchor-tab:hover { border-color: var(--accent); color: var(--text); }
-    .anchor-tab.active { border-color: var(--accent); color: var(--accent); background: #0d1f14; }
-    .anchor-tab-badge {
-      display: inline-flex; align-items: center; justify-content: center;
-      background: var(--accent); color: #000; font-size: 0.6rem; font-weight: 500;
-      width: 15px; height: 15px; border-radius: 50%; margin-left: 5px; vertical-align: middle;
-    }
 
-    .anchor-recap { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); background: var(--bg); }
+.anchor-recap { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); background: var(--bg); }
     .anchor-recap.hidden-recap { display: none; }
     .anchor-chip {
       display: flex; align-items: center; gap: 5px; background: #0d1f14;
@@ -215,6 +221,7 @@
       display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
       gap: 8px; max-height: 260px; overflow-y: auto; padding: 2px;
     }
+    .anchor-grid .anchor-loading { grid-column: 1 / -1; }
     .anchor-card {
       display: flex; flex-direction: column; align-items: center; gap: 4px;
       cursor: pointer; padding: 4px; border: 1px solid transparent;
@@ -329,34 +336,14 @@
           <span class="field-error">Ce champ est requis</span>
         </div>
 
-        <!-- Anchor picker -->
-        <div id="anchor-section" class="anchor-section hidden">
-          <div class="anchor-header">
-            <span class="anchor-label">Anchors — morceaux de référence</span>
-            <span class="anchor-count"><span class="count-num" id="anchor-count-num">0</span> sélectionné(s)</span>
-          </div>
-          <div id="anchor-tabs" class="anchor-tabs hidden"></div>
-          <p class="anchor-hint">
-            Sélectionne des morceaux qui correspondent <strong>exactement</strong> à ce que tu veux.
-            GPT les utilise comme étalon pour les cas limites.
-            <strong>Recommandé : min. 5.</strong>
-          </p>
-          <div id="anchor-recap" class="anchor-recap hidden-recap"></div>
-          <input type="text" class="anchor-search" id="anchor-search"
-            placeholder="Rechercher un titre ou un artiste…"
-            oninput="filterAnchorGrid(this.value)" />
-          <div id="anchor-grid" class="anchor-grid">
-            <span class="anchor-loading">Chargement des morceaux…</span>
-          </div>
+        <!-- Onglets playlists -->
+        <div class="playlist-tabs-bar">
+          <div class="playlist-tabs" id="playlist-tabs"></div>
+          <button class="tab-add" id="btn-add-playlist" onclick="addPlaylist()" title="Ajouter une playlist">+</button>
         </div>
 
-        <!-- Playlist slots -->
-        <div class="pl-slots" id="playlist-slots"></div>
-
-        <div class="btn-row">
-          <button class="btn btn-ghost btn-sm" id="btn-add-playlist" onclick="addPlaylist()">+ Playlist</button>
-          <span id="add-playlist-hint" style="font-size:0.73rem;color:var(--muted)"></span>
-        </div>
+        <!-- Contenu de l'onglet actif -->
+        <div id="playlist-panel"></div>
 
         <!-- Multi-passe (single playlist only) -->
         <div class="toggle-row" id="toggle-multipass-row">
@@ -481,7 +468,8 @@
     document.getElementById('card-login').classList.add('hidden')
     document.getElementById('dashboard').classList.remove('hidden')
     document.getElementById('btn-logout').classList.remove('hidden')
-    renderPlaylistSlots()
+    renderTabs()
+    renderActivePanel()
     loadPlaylists()
     loadHistory()
   }
@@ -537,158 +525,170 @@
     }).catch(e => onError(e.message))
   }
 
-  // ── Playlist slots ───────────────────────────────────────────────────────
+  // ── Playlist tabs ─────────────────────────────────────────────────────────
   let _playlistSlots = [{ id: 0, name: '', prompt: '', anchors: new Map() }]
   let _nextSlotId    = 1
+  let _activeTab     = 0
+  let _anchorTracks  = []
+  let _anchorLoadedFor = ''
 
-  function _saveSlotValues() {
-    _playlistSlots.forEach(slot => {
-      const nameEl   = document.getElementById(`pl-name-${slot.id}`)
-      const promptEl = document.getElementById(`pl-prompt-${slot.id}`)
-      if (nameEl)   slot.name   = nameEl.value
-      if (promptEl) slot.prompt = promptEl.value
-    })
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
   }
 
-  function renderPlaylistSlots() {
-    const container = document.getElementById('playlist-slots')
-    container.innerHTML = ''
+  function _activeSlot() { return _playlistSlots[_activeTab] }
+
+  function renderTabs() {
+    const tabsEl = document.getElementById('playlist-tabs')
+    tabsEl.innerHTML = ''
     _playlistSlots.forEach((slot, i) => {
-      const div = document.createElement('div')
-      div.className = 'pl-slot'
-      div.innerHTML = `
-        <div class="pl-slot-header">
-          <span class="pl-slot-label">Playlist ${i + 1}</span>
-          ${_playlistSlots.length > 1
-            ? `<button class="btn btn-danger btn-sm" onclick="removePlaylist(${slot.id})">Supprimer</button>`
-            : ''}
-        </div>
-        <div class="field" id="field-pl-name-${slot.id}">
-          <label>Nom</label>
-          <input type="text" id="pl-name-${slot.id}" placeholder="Chill Soir"
-            oninput="clearError('field-pl-name-${slot.id}')" />
-          <span class="field-error">Ce champ est requis</span>
-        </div>
-        <div class="field" id="field-pl-prompt-${slot.id}">
-          <label>Prompt</label>
-          <textarea id="pl-prompt-${slot.id}" rows="2"
-            placeholder="Musiques calmes et introspectives pour la fin de soirée"
-            oninput="clearError('field-pl-prompt-${slot.id}')"></textarea>
-          <span class="field-error">Ce champ est requis</span>
-        </div>`
-      container.appendChild(div)
-      // Restaurer les valeurs sauvegardées
-      document.getElementById(`pl-name-${slot.id}`).value   = slot.name
-      document.getElementById(`pl-prompt-${slot.id}`).value = slot.prompt
+      const label  = slot.name.trim() || `Playlist ${i + 1}`
+      const active = i === _activeTab ? ' active' : ''
+      const btn    = document.createElement('button')
+      btn.className = `pl-tab${active}`
+      btn.innerHTML = `<span>${esc(label)}</span>`
+      if (_playlistSlots.length > 1) {
+        const x = document.createElement('span')
+        x.className = 'tab-close'
+        x.textContent = '×'
+        x.title = 'Supprimer'
+        x.addEventListener('click', e => { e.stopPropagation(); removePlaylist(slot.id) })
+        btn.appendChild(x)
+      }
+      btn.addEventListener('click', () => switchTab(i))
+      tabsEl.appendChild(btn)
     })
+    document.getElementById('btn-add-playlist').disabled = _playlistSlots.length >= 3
+  }
 
-    const atMax = _playlistSlots.length >= 3
-    document.getElementById('btn-add-playlist').disabled = atMax
-    document.getElementById('add-playlist-hint').textContent = atMax ? 'Maximum 3 playlists' : ''
-    document.getElementById('toggle-multipass-row')
-      .classList.remove('hidden')
+  function renderActivePanel() {
+    const slot  = _activeSlot()
+    const panel = document.getElementById('playlist-panel')
 
-    updateAnchorTabs()
+    const anchorBody = _anchorTracks.length === 0
+      ? `<span class="anchor-loading">Entre d'abord une playlist source pour charger les morceaux.</span>`
+      : ''
+
+    panel.innerHTML = `
+      <div class="field" id="field-pl-name-${slot.id}">
+        <label>Nom</label>
+        <input type="text" id="pl-name-${slot.id}" placeholder="Chill Soir"
+          oninput="onNameInput(${slot.id})" />
+        <span class="field-error">Ce champ est requis</span>
+      </div>
+      <div class="field" id="field-pl-prompt-${slot.id}">
+        <label>Prompt</label>
+        <textarea id="pl-prompt-${slot.id}" rows="3"
+          placeholder="Musiques calmes et introspectives pour la fin de soirée"
+          oninput="onPromptInput(${slot.id})"></textarea>
+        <span class="field-error">Ce champ est requis</span>
+      </div>
+      <div class="anchor-section">
+        <div class="anchor-header">
+          <span class="anchor-label">Anchors — morceaux de référence</span>
+          <span class="anchor-count"><span class="count-num" id="anchor-count-num">0</span> sélectionné(s)</span>
+        </div>
+        <p class="anchor-hint">
+          Sélectionne des morceaux qui correspondent <strong>exactement</strong> à ce que tu veux.
+          GPT les utilise comme étalon pour les cas limites. <strong>Recommandé : min. 5.</strong>
+        </p>
+        <div id="anchor-recap" class="anchor-recap hidden-recap"></div>
+        <input type="text" class="anchor-search" id="anchor-search"
+          placeholder="Rechercher un titre ou un artiste…"
+          oninput="filterAnchorGrid(this.value)" />
+        <div id="anchor-grid" class="anchor-grid">${anchorBody}</div>
+      </div>`
+
+    // Restore saved values
+    document.getElementById(`pl-name-${slot.id}`).value   = slot.name
+    document.getElementById(`pl-prompt-${slot.id}`).value = slot.prompt
+
+    if (_anchorTracks.length) {
+      renderAnchorGrid(_anchorTracks)
+      _renderRecap()
+      _updateAnchorMeta()
+    }
+  }
+
+  function onNameInput(slotId) {
+    const slot = _playlistSlots.find(s => s.id === slotId)
+    if (!slot) return
+    slot.name = document.getElementById(`pl-name-${slotId}`).value
+    clearError(`field-pl-name-${slotId}`)
+    renderTabs()
+  }
+
+  function onPromptInput(slotId) {
+    const slot = _playlistSlots.find(s => s.id === slotId)
+    if (!slot) return
+    slot.prompt = document.getElementById(`pl-prompt-${slotId}`).value
+    clearError(`field-pl-prompt-${slotId}`)
+  }
+
+  function switchTab(tabIdx) {
+    _activeTab = tabIdx
+    renderTabs()
+    renderActivePanel()
   }
 
   function addPlaylist() {
     if (_playlistSlots.length >= 3) return
-    _saveSlotValues()
     const id = _nextSlotId++
     _playlistSlots.push({ id, name: '', prompt: '', anchors: new Map() })
-    _activeAnchorTab = _playlistSlots.length - 1
-    renderPlaylistSlots()
-    renderAnchorGrid(_anchorTracks)
-    _renderRecap()
+    _activeTab = _playlistSlots.length - 1
+    renderTabs()
+    renderActivePanel()
   }
 
   function removePlaylist(slotId) {
-    _saveSlotValues()
     const idx = _playlistSlots.findIndex(s => s.id === slotId)
     if (idx === -1) return
     _playlistSlots.splice(idx, 1)
-    _activeAnchorTab = Math.min(_activeAnchorTab, _playlistSlots.length - 1)
-    renderPlaylistSlots()
-    renderAnchorGrid(_anchorTracks)
-    _renderRecap()
-    _updateAnchorMeta()
+    _activeTab = Math.min(_activeTab, _playlistSlots.length - 1)
+    renderTabs()
+    renderActivePanel()
   }
 
-  // ── Anchors ──────────────────────────────────────────────────────────────
-  let _anchorTracks    = []
-  let _anchorLoadedFor = ''
-  let _activeAnchorTab = 0
-
+  // ── Anchors ───────────────────────────────────────────────────────────────
   function resetAnchors() {
     _anchorLoadedFor = ''
     _anchorTracks    = []
     _playlistSlots.forEach(s => s.anchors.clear())
-    _activeAnchorTab = 0
-    document.getElementById('anchor-section').classList.add('hidden')
-    document.getElementById('anchor-search').value = ''
-    document.getElementById('anchor-recap').className = 'anchor-recap hidden-recap'
-    document.getElementById('anchor-recap').innerHTML = ''
-    document.getElementById('anchor-grid').innerHTML = '<span class="anchor-loading">Chargement des morceaux…</span>'
-    document.getElementById('anchor-count-num').textContent = '0'
-    updateAnchorTabs()
+    renderActivePanel()
   }
 
   async function onSourceBlur() {
     const source = document.getElementById('source-id').value.trim()
     if (!source || source === _anchorLoadedFor) return
     _anchorLoadedFor = source
-
     _playlistSlots.forEach(s => s.anchors.clear())
-    _activeAnchorTab = 0
-    document.getElementById('anchor-count-num').textContent = '0'
-    document.getElementById('anchor-search').value = ''
-    document.getElementById('anchor-recap').className = 'anchor-recap hidden-recap'
-    document.getElementById('anchor-recap').innerHTML = ''
-    document.getElementById('anchor-section').classList.remove('hidden')
-    document.getElementById('anchor-grid').innerHTML = '<span class="anchor-loading">Chargement des morceaux…</span>'
-    updateAnchorTabs()
+
+    const grid = document.getElementById('anchor-grid')
+    if (grid) grid.innerHTML = '<span class="anchor-loading">Chargement des morceaux…</span>'
 
     try {
       const res  = await fetch(`${API}/source-tracks?source_id=${encodeURIComponent(source)}`)
       const data = await res.json()
       if (!res.ok || !data.data?.length) {
-        document.getElementById('anchor-grid').innerHTML = '<span class="anchor-loading">Aucun morceau trouvé</span>'
+        if (grid) grid.innerHTML = '<span class="anchor-loading">Aucun morceau trouvé</span>'
         return
       }
       _anchorTracks = data.data
       renderAnchorGrid(_anchorTracks)
+      _renderRecap()
+      _updateAnchorMeta()
     } catch {
-      document.getElementById('anchor-grid').innerHTML = '<span class="anchor-loading">Erreur de chargement</span>'
+      const g = document.getElementById('anchor-grid')
+      if (g) g.innerHTML = '<span class="anchor-loading">Erreur de chargement</span>'
     }
   }
 
-  function updateAnchorTabs() {
-    const tabsEl = document.getElementById('anchor-tabs')
-    if (_playlistSlots.length <= 1) { tabsEl.classList.add('hidden'); return }
-    tabsEl.classList.remove('hidden')
-    tabsEl.innerHTML = _playlistSlots.map((slot, i) => {
-      const n      = slot.anchors.size
-      const active = i === _activeAnchorTab ? ' active' : ''
-      const badge  = n > 0 ? `<span class="anchor-tab-badge">${n}</span>` : ''
-      return `<button class="anchor-tab${active}" onclick="switchAnchorTab(${i})">
-        Playlist ${i + 1}${badge}
-      </button>`
-    }).join('')
-  }
-
-  function switchAnchorTab(tabIdx) {
-    _activeAnchorTab = tabIdx
-    updateAnchorTabs()
-    renderAnchorGrid(_anchorTracks)
-    _renderRecap()
-    _updateAnchorMeta()
-  }
-
   function renderAnchorGrid(tracks) {
-    const slot      = _playlistSlots[_activeAnchorTab]
+    const slot      = _activeSlot()
     const selectedM = slot ? slot.anchors : new Map()
     const grid      = document.getElementById('anchor-grid')
-    grid.innerHTML  = ''
+    if (!grid) return
+    grid.innerHTML = ''
     if (!tracks.length) {
       grid.innerHTML = '<span class="anchor-loading">Aucun résultat</span>'
       return
@@ -700,8 +700,8 @@
       card.innerHTML = t.cover_url
         ? `<img src="${t.cover_url}" alt="" loading="lazy" />`
         : `<div style="width:64px;height:64px;background:var(--border)"></div>`
-      card.innerHTML += `<span class="ac-title" title="${t.title}">${t.title}</span>`
-      card.innerHTML += `<span class="ac-artist" title="${t.artists}">${t.artists}</span>`
+      card.innerHTML += `<span class="ac-title" title="${esc(t.title)}">${esc(t.title)}</span>`
+      card.innerHTML += `<span class="ac-artist" title="${esc(t.artists)}">${esc(t.artists)}</span>`
       card.addEventListener('click', () => toggleAnchor(t))
       grid.appendChild(card)
     })
@@ -717,31 +717,29 @@
   }
 
   function toggleAnchor(t) {
-    const slot = _playlistSlots[_activeAnchorTab]
+    const slot = _activeSlot()
     if (!slot) return
-    const anchors = slot.anchors
-    if (anchors.has(t.id)) anchors.delete(t.id)
-    else anchors.set(t.id, { id: t.id, title: t.title, artists: t.artists })
-
+    if (slot.anchors.has(t.id)) slot.anchors.delete(t.id)
+    else slot.anchors.set(t.id, { id: t.id, title: t.title, artists: t.artists })
     const card = document.getElementById(`ac-${t.id}`)
-    if (card) card.classList.toggle('selected', anchors.has(t.id))
-
+    if (card) card.classList.toggle('selected', slot.anchors.has(t.id))
     _updateAnchorMeta()
     _renderRecap()
-    updateAnchorTabs()
   }
 
   function _updateAnchorMeta() {
-    const slot = _playlistSlots[_activeAnchorTab]
+    const slot = _activeSlot()
     const n    = slot ? slot.anchors.size : 0
     const cnt  = document.getElementById('anchor-count-num')
+    if (!cnt) return
     cnt.textContent = n
     cnt.className   = 'count-num' + (n > 0 && n < 5 ? ' warn' : '')
   }
 
   function _renderRecap() {
-    const slot  = _playlistSlots[_activeAnchorTab]
+    const slot  = _activeSlot()
     const recap = document.getElementById('anchor-recap')
+    if (!recap) return
     if (!slot || slot.anchors.size === 0) {
       recap.className = 'anchor-recap hidden-recap'
       recap.innerHTML = ''
@@ -750,14 +748,14 @@
     recap.className = 'anchor-recap'
     recap.innerHTML = ''
     for (const t of slot.anchors.values()) {
-      const chip     = document.createElement('div')
+      const chip = document.createElement('div')
       chip.className = 'anchor-chip'
       chip.title     = `${t.title} — ${t.artists}`
-      const raw      = _anchorTracks.find(a => a.id === t.id)
+      const raw  = _anchorTracks.find(a => a.id === t.id)
       chip.innerHTML = raw?.cover_url
         ? `<img src="${raw.cover_url}" alt="" />`
         : `<div class="chip-placeholder"></div>`
-      chip.innerHTML += `<span class="chip-name">${t.title}</span><span class="chip-x">×</span>`
+      chip.innerHTML += `<span class="chip-name">${esc(t.title)}</span><span class="chip-x">×</span>`
       chip.addEventListener('click', () => toggleAnchor(t))
       recap.appendChild(chip)
     }
@@ -768,17 +766,26 @@
     const sourceId  = document.getElementById('source-id').value.trim()
     const multiPass = document.getElementById('toggle-multipass').checked
 
-    let valid = validateFields([{ fieldId: 'field-source', value: sourceId }])
+    let valid          = validateFields([{ fieldId: 'field-source', value: sourceId }])
+    let firstErrorTab  = -1
 
-    const playlists = _playlistSlots.map(slot => {
-      const name   = document.getElementById(`pl-name-${slot.id}`)?.value.trim()
-      const prompt = document.getElementById(`pl-prompt-${slot.id}`)?.value.trim()
-      if (!name)   { document.getElementById(`field-pl-name-${slot.id}`).classList.add('error');   valid = false }
-      if (!prompt) { document.getElementById(`field-pl-prompt-${slot.id}`).classList.add('error'); valid = false }
-      return { name, prompt, anchors: Array.from(slot.anchors.values()) }
+    const playlists = _playlistSlots.map((slot, i) => {
+      if (!slot.name.trim() || !slot.prompt.trim()) {
+        if (firstErrorTab === -1) firstErrorTab = i
+        valid = false
+      }
+      return { name: slot.name.trim(), prompt: slot.prompt.trim(), anchors: Array.from(slot.anchors.values()) }
     })
 
-    if (!valid) return
+    if (!valid) {
+      if (firstErrorTab !== -1) {
+        switchTab(firstErrorTab)
+        const slot = _playlistSlots[firstErrorTab]
+        if (!slot.name.trim())   document.getElementById(`field-pl-name-${slot.id}`)?.classList.add('error')
+        if (!slot.prompt.trim()) document.getElementById(`field-pl-prompt-${slot.id}`)?.classList.add('error')
+      }
+      return
+    }
 
     const btn        = document.getElementById('btn-generate')
     const loader     = document.getElementById('gen-loader')
