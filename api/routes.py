@@ -192,8 +192,10 @@ def generate(access_token: str):
 @bp.route("/sync", methods=["POST"])
 @require_auth
 def sync(access_token: str):
-    body      = request.json or {}
-    source_id = body.get("source_id")
+    body        = request.json or {}
+    source_id   = body.get("source_id")
+    destructive = body.get("destructive", True)
+    target_ids  = body.get("target_playlist_ids") or None
 
     if not source_id:
         return _err("Missing required parameter: source_id")
@@ -204,7 +206,10 @@ def sync(access_token: str):
     def stream():
         import json as _json
         results = {}
-        for event in sync_all_playlists_stream(access_token, _parse_id(source_id)):
+        for event in sync_all_playlists_stream(
+            access_token, _parse_id(source_id),
+            destructive=destructive, target_ids=target_ids,
+        ):
             yield event
             try:
                 data = _json.loads(event.removeprefix("data: ").strip())

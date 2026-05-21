@@ -115,14 +115,21 @@ class ClassifierService:
         if preprompt is None:
             preprompt = PREPROMPT
 
+        if anchors:
+            anchor_ids = {a.id for a in anchors}
+            batch = sorted(batch, key=lambda t: 0 if t.id in anchor_ids else 1)
+
         prompt = f"Listening context: {description}\n"
 
         if anchors:
-            prompt += "\nConfirmed inclusions (these songs ARE in the playlist — do not evaluate them):\n"
+            prompt += "\nReference tracks — these songs perfectly embody what this playlist should be:\n"
             prompt += "\n".join(f'- "{a.title}" by {a.artists}' for a in anchors)
-            prompt += "\nEvaluate every candidate by asking: does it fit naturally alongside these confirmed tracks?\n"
+            prompt += (
+                "\nFor each song below, ask: would it feel natural in the same playlist as these reference tracks? "
+                "Judge on shared mood, energy, tempo and style — not just the description above.\n"
+            )
 
-        prompt += "\nCandidates to evaluate:\n"
+        prompt += "\nSongs to evaluate:\n"
         prompt += "\n".join(
             f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
             for t in batch
@@ -162,17 +169,23 @@ class ClassifierService:
         playlists_spec: [{'idx': int, 'prompt': str, 'anchors': list[Track]}]
         Returns: {playlist_idx: [decision_dicts]}
         """
+        all_anchor_ids = {a.id for p in playlists_spec for a in (p.get("anchors") or [])}
+        sorted_batch   = sorted(batch, key=lambda t: 0 if t.id in all_anchor_ids else 1)
+
         prompt = "Playlists to fill:\n"
         for p in playlists_spec:
             prompt += f'\n[{p["idx"]}] Context: {p["prompt"]}'
             if p.get("anchors"):
                 examples = ", ".join(f'"{a.title}" by {a.artists}' for a in p["anchors"])
-                prompt += f"\n    Reference examples (must fit): {examples}"
+                prompt += (
+                    f"\n    Reference tracks (they perfectly embody this playlist): {examples}"
+                    f"\n    Ask for each candidate: would it feel natural alongside these tracks?"
+                )
 
         prompt += "\n\nSongs to evaluate:\n"
         prompt += "\n".join(
             f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
-            for t in batch
+            for t in sorted_batch
         )
 
         empty = {p["idx"]: [] for p in playlists_spec}

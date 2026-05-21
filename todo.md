@@ -1,1 +1,1 @@
-- [ ] Améliorer le fichier de decisions.log pour inclure le fait qu'on peut maintenant générer plusieurs playlists d'un coup
+- contraindre à des tailles de batch aussi pour la seconde passe au generate

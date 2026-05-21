@@ -105,6 +105,24 @@ class SpotifyService:
         if tracks:
             self.remove_from_playlist(playlist_id, [t.id for t in tracks])
 
+    def get_playlist_name(self, playlist_id: str) -> str:
+        if playlist_id == "liked":
+            return "Titres likés"
+        data = self._client.playlist(playlist_id, fields="name")
+        return data.get("name") or playlist_id
+
+    def get_playlist_description(self, playlist_id: str) -> str:
+        data = self._client.playlist(playlist_id, fields="description")
+        return data.get("description") or ""
+
+    def prepend_playlist_description(self, playlist_id: str, note: str):
+        import re
+        current = self.get_playlist_description(playlist_id)
+        # Remplace un éventuel ancien marqueur [Sync additif ...] en début de description
+        cleaned = re.sub(r"^\[Sync additif[^\]]*\]\s*", "", current)
+        self._client.playlist_change_details(playlist_id, description=f"{note}{cleaned}")
+        logger.info("Description updated for '%s'", playlist_id)
+
     def add_to_playlist(self, playlist_id: str, track_ids: list):
         self._bulk_add(playlist_id, track_ids)
         logger.info("Added %d tracks to '%s'", len(track_ids), playlist_id)

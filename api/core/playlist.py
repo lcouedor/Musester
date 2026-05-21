@@ -7,7 +7,7 @@ from typing import Generator
 from core.models import Track, Decision
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PASS2
-from services.auth import save_playlist_prompt, get_playlist_prompt, get_playlist_anchors
+from services.auth import save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source
 
 logger      = logging.getLogger(__name__)
 _classifier = ClassifierService()
@@ -162,8 +162,8 @@ def generate_playlist_stream(
 
     playlist_id   = spotify.create_playlist(playlist_name, selected)
     saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists} for t in anchor_tracks] or None
-    save_playlist_prompt(user_id, playlist_id, prompt, anchors=saved_anchors)
-    _write_decisions_log(prompt, decisions)
+    save_playlist_prompt(user_id, playlist_id, prompt, anchors=saved_anchors, source_id=source_id)
+    _write_decisions_log([{"name": playlist_name, "prompt": prompt, "anchors": anchor_tracks, "decisions": decisions}])
 
     yield _event("done", results=[{
         "playlist_idx":   0,
@@ -279,12 +279,14 @@ def generate_multi_playlist_stream(
 
     yield _event("status", message=f"Création de {len(playlists)} playlist(s)…")
 
-    results = []
+    results     = []
+    log_entries = []
     for spec in playlists_spec:
-        selected      = _filter(decisions_by_playlist[spec["idx"]])
+        decisions     = decisions_by_playlist[spec["idx"]]
+        selected      = _filter(decisions)
         playlist_id   = spotify.create_playlist(spec["name"], selected)
         saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists} for t in spec["anchors"]] or None
-        save_playlist_prompt(user_id, playlist_id, spec["prompt"], anchors=saved_anchors)
+        save_playlist_prompt(user_id, playlist_id, spec["prompt"], anchors=saved_anchors, source_id=source_id)
         results.append({
             "playlist_idx":   spec["idx"],
             "playlist_id":    playlist_id,
@@ -292,7 +294,14 @@ def generate_multi_playlist_stream(
             "checked_songs":  len(tracks),
             "selected_songs": len(selected),
         })
+        log_entries.append({
+            "name":      spec["name"],
+            "prompt":    spec["prompt"],
+            "anchors":   spec["anchors"],
+            "decisions": decisions,
+        })
 
+    _write_decisions_log(log_entries)
     yield _event("done", results=results)
 
 
@@ -303,6 +312,8 @@ def generate_multi_playlist_stream(
 def sync_all_playlists_stream(
     access_token: str,
     source_id: str,
+    destructive: bool = True,
+    target_ids: list | None = None,
 ) -> Generator[str, None, None]:
 
     import config as _cfg
@@ -312,10 +323,14 @@ def sync_all_playlists_stream(
     yield _event("status", message="Récupération de la playlist source…")
     source_tracks = spotify.get_tracks(source_id, extended=True)
     source_ids    = {t.id for t in source_tracks}
+    source_name   = spotify.get_playlist_name(source_id)
 
     yield _event("status", message="Récupération des playlists générées…")
     generated = spotify.get_user_generated_playlists()
-    total     = len(generated)
+    if target_ids:
+        target_set = set(target_ids)
+        generated  = [p for p in generated if p["id"] in target_set]
+    total = len(generated)
     results   = {}
 
     if total == 0:
@@ -326,30 +341,52 @@ def sync_all_playlists_stream(
     yield _event("status",   message=f"{total} playlist(s) à synchroniser")
     yield _event("progress", done=0, total=total)
 
+    log_entries: list[dict] = []
+
     for i, playlist in enumerate(generated):
         pid  = playlist["id"]
         name = playlist["name"]
 
-        yield _event("status", message=f"[{i+1}/{total}] {name} — suppression des morceaux retirés…")
+        if destructive:
+            yield _event("status", message=f"[{i+1}/{total}] {name} — suppression des morceaux retirés…")
+        else:
+            yield _event("status", message=f"[{i+1}/{total}] {name} — recherche des nouveaux morceaux…")
 
         target_tracks = spotify.get_tracks(pid, extended=True)
         existing_ids  = {t.id for t in target_tracks}
 
-        to_remove = [t.id for t in target_tracks if t.id not in source_ids]
-        if to_remove:
-            spotify.remove_from_playlist(pid, to_remove)
+        if destructive:
+            to_remove = [t.id for t in target_tracks if t.id not in source_ids]
+            if to_remove:
+                spotify.remove_from_playlist(pid, to_remove)
+        else:
+            to_remove = []
 
-        last_added = max((t.added_at for t in target_tracks), default=None) if target_tracks else spotify.get_playlist_created_at(pid)
+        # Calcul sûr de last_added — certains morceaux Spotify ont added_at = None
+        if target_tracks:
+            valid_dates = [t.added_at for t in target_tracks if t.added_at]
+            last_added  = max(valid_dates) if valid_dates else None
+        else:
+            last_added = spotify.get_playlist_created_at(pid)
 
-        added   = 0
-        checked = 0
+        added     = 0
+        checked   = 0
 
         if not last_added:
             logger.warning("No reference date for '%s', skipping update step", name)
             results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0, "reason": "no reference date"}
         else:
-            new_tracks = [t for t in source_tracks if t.added_at > last_added and t.id not in existing_ids]
-            checked    = len(new_tracks)
+            # Filtre défensif : ignorer les morceaux source sans date
+            new_tracks = [
+                t for t in source_tracks
+                if t.added_at and t.added_at > last_added and t.id not in existing_ids
+            ]
+            checked = len(new_tracks)
+
+            yield _event("status", message=(
+                f"[{i+1}/{total}] {name} — "
+                f"{checked} nouveau(x) morceau(x) détecté(s) depuis le dernier sync"
+            ))
 
             if new_tracks:
                 prompt = get_playlist_prompt(pid)
@@ -360,8 +397,8 @@ def sync_all_playlists_stream(
                     raw_anchors  = get_playlist_anchors(pid)
                     sync_anchors = [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
                                     for a in raw_anchors] or None
-                    total_b  = -(-len(new_tracks) // _cfg.BATCH_SIZE)
-                    batches  = [new_tracks[j:j+_cfg.BATCH_SIZE] for j in range(0, len(new_tracks), _cfg.BATCH_SIZE)]
+                    total_b = -(-len(new_tracks) // _cfg.BATCH_SIZE)
+                    batches = [new_tracks[j:j+_cfg.BATCH_SIZE] for j in range(0, len(new_tracks), _cfg.BATCH_SIZE)]
 
                     yield _event("status", message=f"[{i+1}/{total}] {name} — {total_b} batch(s) en cours…")
 
@@ -372,7 +409,7 @@ def sync_all_playlists_stream(
                         for fut in as_completed(futs):
                             raw_sync[futs[fut]] = fut.result()
 
-                    all_decisions = []
+                    all_decisions: list[Decision] = []
                     for j in sorted(raw_sync):
                         for d in raw_sync[j]:
                             try:
@@ -380,9 +417,26 @@ def sync_all_playlists_stream(
                             except (TypeError, ValueError):
                                 pass
 
+                    log_entries.append({
+                        "name":      name,
+                        "prompt":    prompt,
+                        "anchors":   [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
+                                      for a in raw_anchors] if raw_anchors else [],
+                        "decisions": all_decisions,
+                    })
+
                     selected = _filter(all_decisions)
                     if selected:
                         spotify.add_to_playlist(pid, selected)
+                        if not destructive:
+                            from datetime import datetime
+                            original_source = get_playlist_source(pid)
+                            date_str        = datetime.now().strftime("%d/%m/%Y")
+                            if original_source and original_source != source_id:
+                                note = f"[Sync additif depuis \"{source_name}\" (source différente de l'originale) — {date_str}] "
+                            else:
+                                note = f"[Sync additif depuis \"{source_name}\" — {date_str}] "
+                            spotify.prepend_playlist_description(pid, note)
                     added     = len(selected)
                     results[pid] = {"name": name, "removed": len(to_remove), "added": added, "checked": checked}
             else:
@@ -391,6 +445,8 @@ def sync_all_playlists_stream(
         yield _event("playlist_done", name=name, removed=len(to_remove), added=added, checked=checked)
         yield _event("progress", done=i + 1, total=total)
 
+    if log_entries:
+        _write_decisions_log(log_entries)
     yield _event("done", results=results)
 
 
@@ -398,17 +454,44 @@ def sync_all_playlists_stream(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _write_decisions_log(prompt: str, decisions: list):
-    log_path = os.path.join(os.path.dirname(__file__), "..", "decisions.log")
-    included = [d for d in decisions if d.include]
-    excluded = [d for d in decisions if not d.include]
+def _write_decisions_log(entries: list[dict]):
+    """
+    entries: [{'name': str, 'prompt': str, 'anchors': list[Track], 'decisions': list[Decision]}]
+    """
+    log_path   = os.path.join(os.path.dirname(__file__), "..", "decisions.log")
+    n          = len(entries)
+    checked    = len(entries[0]["decisions"]) if entries else 0
+    sep_heavy  = "═" * 62
+    sep_light  = "─" * 62
+
     with open(log_path, "w", encoding="utf-8") as f:
-        f.write(f"PROMPT : {prompt}\n")
-        f.write(f"TOTAL  : {len(decisions)} — INCLUS : {len(included)} — EXCLUS : {len(excluded)}\n")
-        f.write("=" * 60 + "\n\n")
-        f.write("INCLUS\n")
-        for d in included:
-            f.write(f"  {d.title} — {d.reason}\n")
-        f.write("\nEXCLUS\n")
-        for d in excluded:
-            f.write(f"  {d.title} — {d.reason}\n")
+        f.write(f"{sep_heavy}\n")
+        f.write(f"  GÉNÉRATION — {n} playlist(s)\n")
+        f.write(f"{sep_heavy}\n\n")
+
+        for i, entry in enumerate(entries):
+            name      = entry["name"]
+            prompt    = entry["prompt"]
+            anchors   = entry.get("anchors") or []
+            decisions = entry["decisions"]
+            included  = [d for d in decisions if d.include]
+            excluded  = [d for d in decisions if not d.include]
+
+            f.write(f"[{i+1}/{n}] IA-{name}\n")
+            f.write(f"{sep_light}\n")
+            f.write(f"PROMPT   : {prompt}\n")
+            if anchors:
+                anchor_str = ", ".join(f'"{a.title}" by {a.artists}' for a in anchors)
+                f.write(f"ANCHORS  : {anchor_str}\n")
+            f.write(f"RÉSULTAT : {len(included)} inclus / {len(excluded)} exclus / {len(decisions)} évalués\n\n")
+
+            f.write("✓ INCLUS\n")
+            for d in included:
+                f.write(f"  {d.title} — {d.reason}\n")
+
+            f.write("\n✗ EXCLUS\n")
+            for d in excluded:
+                f.write(f"  {d.title} — {d.reason}\n")
+
+            if i < n - 1:
+                f.write(f"\n{sep_heavy}\n\n")
