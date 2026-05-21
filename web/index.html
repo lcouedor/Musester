@@ -259,6 +259,35 @@
       padding: 9px 13px; border: 1px solid var(--border); background: var(--bg);
       display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
     }
+    /* ── Sync picker ── */
+    .sync-target-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .sync-target-info { font-size: 0.8rem; color: var(--muted); }
+    .sync-target-info strong { color: var(--text); }
+    .sync-playlist-items {
+      display: flex; flex-direction: column; gap: 5px;
+      max-height: 200px; overflow-y: auto; padding: 2px;
+    }
+    .sync-pl-item {
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 10px; border: 1px solid var(--border);
+      background: var(--bg); cursor: pointer; transition: border-color 0.15s;
+    }
+    .sync-pl-item:hover { border-color: var(--accent); }
+    .sync-pl-item input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; flex-shrink: 0; cursor: pointer; }
+    .sync-pl-item label { font-size: 0.84rem; color: var(--text); cursor: pointer; flex: 1; }
+    .sync-picker-actions { display: flex; gap: 6px; }
+    .sync-picker-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+
+    .history-limit-bar { display: flex; align-items: center; gap: 4px; }
+    .history-limit-bar span { font-size: 0.72rem; color: var(--muted); margin-right: 4px; }
+    .hlimit-btn {
+      font-family: var(--mono); font-size: 0.7rem; padding: 3px 8px;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .hlimit-btn:hover  { border-color: var(--accent); color: var(--text); }
+    .hlimit-btn.active { border-color: var(--accent); color: var(--accent); background: #0d1f14; }
+
     .hi-badge { font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 7px; border: 1px solid; flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
     .hi-badge.generate { color: var(--accent); border-color: var(--accent); }
     .hi-badge.sync     { color: var(--muted);  border-color: var(--border); }
@@ -376,8 +405,19 @@
         <span class="card-title">Synchroniser</span>
         <p class="card-desc">
           Met à jour toutes les playlists <strong style="color:var(--text)">IA-</strong> :
-          ajoute les nouveaux morceaux, supprime ceux retirés de la source.
+          ajoute les nouveaux morceaux et, si le mode destructif est activé, supprime ceux retirés de la source.
         </p>
+
+        <div class="toggle-row" style="padding-top:0;border-top:none">
+          <div class="toggle-label">
+            <span>Mode destructif</span>
+            <small>Supprime les morceaux absents de la source. Désactiver pour additions seulement.</small>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-destructive" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
 
         <div class="field" id="field-sync-source">
           <label>Playlist source (URL ou "liked")</label>
@@ -385,6 +425,25 @@
             placeholder="https://open.spotify.com/playlist/… ou liked"
             oninput="clearError('field-sync-source')" />
           <span class="field-error">Ce champ est requis</span>
+        </div>
+
+        <!-- Sélection des playlists cibles -->
+        <div>
+          <div class="sync-target-row">
+            <span class="sync-target-info" id="sync-target-info">Playlists cibles : <strong>toutes</strong></span>
+            <div class="sync-picker-actions">
+              <button class="btn btn-ghost btn-sm" id="btn-sync-picker" onclick="toggleSyncPicker()">Choisir</button>
+            </div>
+          </div>
+          <div id="sync-picker-list" class="hidden sync-picker-list">
+            <div class="sync-picker-actions">
+              <button class="btn btn-ghost btn-sm" onclick="syncSelectAll(true)">Tout cocher</button>
+              <button class="btn btn-ghost btn-sm" onclick="syncSelectAll(false)">Tout décocher</button>
+            </div>
+            <div class="sync-playlist-items" id="sync-playlist-items">
+              <span class="anchor-loading">Chargement…</span>
+            </div>
+          </div>
         </div>
 
         <div id="sync-loader" class="hidden gen-loader">
@@ -417,7 +476,10 @@
 
       <!-- Historique -->
       <div class="card">
-        <span class="card-title">Historique</span>
+        <div class="card-row">
+          <span class="card-title">Historique</span>
+          <div class="history-limit-bar" id="history-limit-bar"></div>
+        </div>
         <div class="history-list" id="history-list">
           <span class="empty">Chargement…</span>
         </div>
@@ -838,10 +900,98 @@
     })
   }
 
+  // ── Sync picker ──────────────────────────────────────────────────────────
+  let _syncPlaylists   = []         // [{id, name}] chargées depuis l'API
+  let _syncSelectedIds = null       // null = toutes ; Set = sélection explicite
+  let _syncPickerOpen  = false
+
+  async function ensureSyncPlaylists() {
+    if (_syncPlaylists.length) return
+    try {
+      const res  = await fetch(`${API}/playlists`)
+      const data = await res.json()
+      _syncPlaylists = (data.data || []).map(p => ({ id: p.id, name: p.name }))
+    } catch { _syncPlaylists = [] }
+  }
+
+  async function toggleSyncPicker() {
+    _syncPickerOpen = !_syncPickerOpen
+    const listEl = document.getElementById('sync-picker-list')
+    const btnEl  = document.getElementById('btn-sync-picker')
+    if (_syncPickerOpen) {
+      listEl.classList.remove('hidden')
+      btnEl.textContent = 'Masquer'
+      await ensureSyncPlaylists()
+      renderSyncPickerItems()
+    } else {
+      listEl.classList.add('hidden')
+      btnEl.textContent = 'Choisir'
+    }
+  }
+
+  function renderSyncPickerItems() {
+    const container = document.getElementById('sync-playlist-items')
+    if (!_syncPlaylists.length) {
+      container.innerHTML = '<span class="anchor-loading">Aucune playlist IA- trouvée</span>'
+      return
+    }
+    container.innerHTML = ''
+    _syncPlaylists.forEach(p => {
+      const checked = _syncSelectedIds === null || _syncSelectedIds.has(p.id)
+      const item = document.createElement('div')
+      item.className = 'sync-pl-item'
+      const cb = document.createElement('input')
+      cb.type    = 'checkbox'
+      cb.id      = `sp-${p.id}`
+      cb.checked = checked
+      cb.addEventListener('change', () => toggleSyncPlaylist(p.id, cb.checked))
+      const lbl = document.createElement('label')
+      lbl.htmlFor     = `sp-${p.id}`
+      lbl.textContent = p.name
+      item.append(cb, lbl)
+      item.addEventListener('click', e => { if (e.target !== cb) cb.click() })
+      container.appendChild(item)
+    })
+    updateSyncTargetInfo()
+  }
+
+  function toggleSyncPlaylist(id, checked) {
+    if (_syncSelectedIds === null) {
+      _syncSelectedIds = new Set(_syncPlaylists.map(p => p.id))
+    }
+    if (checked) _syncSelectedIds.add(id)
+    else _syncSelectedIds.delete(id)
+
+    if (_syncSelectedIds.size === _syncPlaylists.length) _syncSelectedIds = null
+    updateSyncTargetInfo()
+  }
+
+  function syncSelectAll(check) {
+    _syncSelectedIds = check ? null : new Set()
+    renderSyncPickerItems()
+  }
+
+  function updateSyncTargetInfo() {
+    const el = document.getElementById('sync-target-info')
+    if (!el) return
+    if (_syncSelectedIds === null) {
+      el.innerHTML = 'Playlists cibles : <strong>toutes</strong>'
+    } else {
+      const n = _syncSelectedIds.size
+      el.innerHTML = `Playlists cibles : <strong>${n} sélectionnée${n > 1 ? 's' : ''}</strong>`
+    }
+  }
+
   // ── Sync ─────────────────────────────────────────────────────────────────
   function sync() {
-    const sourceId = document.getElementById('sync-source-id').value.trim()
+    const sourceId    = document.getElementById('sync-source-id').value.trim()
+    const destructive = document.getElementById('toggle-destructive').checked
     if (!validateFields([{ fieldId: 'field-sync-source', value: sourceId }])) return
+
+    if (_syncSelectedIds !== null && _syncSelectedIds.size === 0) {
+      log('✗ Aucune playlist sélectionnée pour le sync', 'err')
+      return
+    }
 
     const btn        = document.getElementById('btn-sync')
     const loader     = document.getElementById('sync-loader')
@@ -856,7 +1006,11 @@
 
     runSSE({
       url:  `${API}/sync`,
-      body: { source_id: sourceId },
+      body: {
+        source_id:           sourceId,
+        destructive,
+        target_playlist_ids: _syncSelectedIds !== null ? Array.from(_syncSelectedIds) : null,
+      },
       onStatus: msg => { statusEl.textContent = msg; log(msg) },
       onProgress: (done, total) => {
         progressEl.className   = 'progress-bar'
@@ -945,38 +1099,67 @@
   }
 
   // ── History ───────────────────────────────────────────────────────────────
+  let _allHistory    = []
+  let _historyLimit  = 10
+  const HISTORY_LIMITS = [10, 20, 40, null] // null = tout
+
   async function loadHistory() {
-    const container = document.getElementById('history-list')
     try {
       const res  = await fetch(`${API}/history`)
       const data = await res.json()
-      if (!res.ok || !data.data?.length) {
-        container.innerHTML = '<span class="empty">Aucune action pour l\'instant</span>'
-        return
-      }
-      container.innerHTML = data.data.map(h => {
-        const isGen  = h.action === 'generate'
-        const name   = h.playlist_name || h.playlist_id || '—'
-        const count  = isGen
-          ? `${h.selected_songs}/${h.checked_songs}`
-          : `+${h.selected_songs||0} / -${h.removed_songs||0}`
-        const detail = isGen ? (h.prompt || '') : `sync — ${h.checked_songs||0} vérifiés`
-        return `
-          <div class="history-item">
-            <span class="hi-badge ${h.action}">${h.action}</span>
-            <div class="hi-left">
-              <span class="hi-name">${isGen ? 'IA-' : ''}${name}</span>
-              <span class="hi-prompt">${detail}</span>
-            </div>
-            <div class="hi-right">
-              <span class="hi-count">${count}</span>
-              <span class="hi-date">${formatDate(h.created_at)}</span>
-            </div>
-          </div>`
-      }).join('')
+      _allHistory = (res.ok && data.data?.length) ? data.data : []
     } catch {
-      container.innerHTML = '<span class="empty">Erreur de chargement</span>'
+      _allHistory = []
     }
+    renderHistory()
+  }
+
+  function renderHistory() {
+    const container = document.getElementById('history-list')
+    const bar       = document.getElementById('history-limit-bar')
+
+    // Boutons de limite — n'apparaissent que si l'historique dépasse 10
+    if (_allHistory.length > 10) {
+      bar.innerHTML = '<span>Afficher :</span>' + HISTORY_LIMITS.map(n => {
+        const label  = n === null ? 'Tout' : n
+        const active = n === _historyLimit ? ' active' : ''
+        return `<button class="hlimit-btn${active}" onclick="setHistoryLimit(${n})">${label}</button>`
+      }).join('')
+    } else {
+      bar.innerHTML = ''
+    }
+
+    if (!_allHistory.length) {
+      container.innerHTML = '<span class="empty">Aucune action pour l\'instant</span>'
+      return
+    }
+
+    const items = _historyLimit === null ? _allHistory : _allHistory.slice(0, _historyLimit)
+    container.innerHTML = items.map(h => {
+      const isGen  = h.action === 'generate'
+      const name   = h.playlist_name || h.playlist_id || '—'
+      const count  = isGen
+        ? `${h.selected_songs}/${h.checked_songs}`
+        : `+${h.selected_songs||0} / -${h.removed_songs||0}`
+      const detail = isGen ? (h.prompt || '') : `sync — ${h.checked_songs||0} vérifiés`
+      return `
+        <div class="history-item">
+          <span class="hi-badge ${h.action}">${h.action}</span>
+          <div class="hi-left">
+            <span class="hi-name">${isGen ? 'IA-' : ''}${name}</span>
+            <span class="hi-prompt">${detail}</span>
+          </div>
+          <div class="hi-right">
+            <span class="hi-count">${count}</span>
+            <span class="hi-date">${formatDate(h.created_at)}</span>
+          </div>
+        </div>`
+    }).join('')
+  }
+
+  function setHistoryLimit(n) {
+    _historyLimit = n
+    renderHistory()
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

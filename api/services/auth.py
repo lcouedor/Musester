@@ -57,14 +57,15 @@ def init_db():
                 user_id     TEXT NOT NULL,
                 prompt      TEXT NOT NULL,
                 anchors     TEXT,
+                source_id   TEXT,
                 updated_at  TEXT NOT NULL
             )
         """)
-        # Migration : ajout colonne anchors sur les bases existantes
-        try:
-            conn.execute("ALTER TABLE playlist_prompts ADD COLUMN anchors TEXT")
-        except sqlite3.OperationalError:
-            pass
+        for col in ("anchors TEXT", "source_id TEXT"):
+            try:
+                conn.execute(f"ALTER TABLE playlist_prompts ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
     logger.info("DBs ready")
 
 
@@ -72,17 +73,19 @@ def init_db():
 # Prompts
 # ---------------------------------------------------------------------------
 
-def save_playlist_prompt(user_id: str, playlist_id: str, prompt: str, anchors: list = None):
+def save_playlist_prompt(user_id: str, playlist_id: str, prompt: str,
+                         anchors: list = None, source_id: str = None):
     anchors_json = json.dumps(anchors) if anchors else None
     with _get_conn(HISTORY_PATH) as conn:
         conn.execute("""
-            INSERT INTO playlist_prompts (playlist_id, user_id, prompt, anchors, updated_at)
-            VALUES (?, ?, ?, ?, datetime('now'))
+            INSERT INTO playlist_prompts (playlist_id, user_id, prompt, anchors, source_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(playlist_id) DO UPDATE SET
                 prompt     = excluded.prompt,
                 anchors    = excluded.anchors,
+                source_id  = excluded.source_id,
                 updated_at = excluded.updated_at
-        """, (playlist_id, user_id, prompt, anchors_json))
+        """, (playlist_id, user_id, prompt, anchors_json, source_id))
 
 
 def get_playlist_prompt(playlist_id: str) -> Optional[str]:
@@ -91,6 +94,14 @@ def get_playlist_prompt(playlist_id: str) -> Optional[str]:
             "SELECT prompt FROM playlist_prompts WHERE playlist_id = ?", (playlist_id,)
         ).fetchone()
     return row["prompt"] if row else None
+
+
+def get_playlist_source(playlist_id: str) -> Optional[str]:
+    with _get_conn(HISTORY_PATH) as conn:
+        row = conn.execute(
+            "SELECT source_id FROM playlist_prompts WHERE playlist_id = ?", (playlist_id,)
+        ).fetchone()
+    return row["source_id"] if row else None
 
 
 def get_playlist_anchors(playlist_id: str) -> list:
@@ -151,7 +162,7 @@ def get_history(user_id: str) -> list:
     with _get_conn(HISTORY_PATH) as conn:
         rows = conn.execute("""
             SELECT * FROM history WHERE user_id = ?
-            ORDER BY created_at DESC LIMIT 30
+            ORDER BY created_at DESC LIMIT 100
         """, (user_id,)).fetchall()
     return [dict(r) for r in rows]
 
