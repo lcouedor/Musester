@@ -1172,7 +1172,12 @@
 
   const params = new URLSearchParams(window.location.search)
   if (params.get('error')) {
-    log(`✗ Erreur Spotify : ${params.get('error')}`, 'err')
+    const err = params.get('error')
+    if (err === 'unauthorized') {
+      log('✗ Accès refusé — ton compte Spotify n\'est pas autorisé à utiliser cette application.', 'err')
+    } else {
+      log(`✗ Erreur Spotify : ${err}`, 'err')
+    }
     history.replaceState({}, '', '/')
   }
 

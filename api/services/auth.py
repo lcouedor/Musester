@@ -3,10 +3,12 @@ import logging
 import os
 import sqlite3
 import time
+from datetime import datetime
 from typing import Optional
 
 import requests
 import config
+from db import db_conn, PH, DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +19,12 @@ SPOTIFY_AUTH_URL  = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 
 
-def _get_conn(path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def init_db():
-    with _get_conn(DB_PATH) as conn:
+    if DATABASE_URL:
+        logger.info("PostgreSQL mode — tables gérées par Supabase")
+        return
+
+    with db_conn(DB_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tokens (
                 user_id       TEXT PRIMARY KEY,
@@ -33,8 +33,7 @@ def init_db():
                 expires_at    INTEGER NOT NULL
             )
         """)
-    with _get_conn(HISTORY_PATH) as conn:
-        # Table historique unifiée generate + sync
+    with db_conn(HISTORY_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS history (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,7 +49,6 @@ def init_db():
                 execution_time TEXT
             )
         """)
-        # Table prompts — source de vérité pour les prompts GPT
         conn.execute("""
             CREATE TABLE IF NOT EXISTS playlist_prompts (
                 playlist_id TEXT PRIMARY KEY,
@@ -66,7 +64,7 @@ def init_db():
                 conn.execute(f"ALTER TABLE playlist_prompts ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass
-    logger.info("DBs ready")
+    logger.info("DBs SQLite prêtes")
 
 
 # ---------------------------------------------------------------------------
@@ -76,38 +74,39 @@ def init_db():
 def save_playlist_prompt(user_id: str, playlist_id: str, prompt: str,
                          anchors: list = None, source_id: str = None):
     anchors_json = json.dumps(anchors) if anchors else None
-    with _get_conn(HISTORY_PATH) as conn:
-        conn.execute("""
+    now = datetime.now().isoformat()
+    with db_conn(HISTORY_PATH) as conn:
+        conn.execute(f"""
             INSERT INTO playlist_prompts (playlist_id, user_id, prompt, anchors, source_id, updated_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH})
             ON CONFLICT(playlist_id) DO UPDATE SET
                 prompt     = excluded.prompt,
                 anchors    = excluded.anchors,
                 source_id  = excluded.source_id,
                 updated_at = excluded.updated_at
-        """, (playlist_id, user_id, prompt, anchors_json, source_id))
+        """, (playlist_id, user_id, prompt, anchors_json, source_id, now))
 
 
 def get_playlist_prompt(playlist_id: str) -> Optional[str]:
-    with _get_conn(HISTORY_PATH) as conn:
+    with db_conn(HISTORY_PATH) as conn:
         row = conn.execute(
-            "SELECT prompt FROM playlist_prompts WHERE playlist_id = ?", (playlist_id,)
+            f"SELECT prompt FROM playlist_prompts WHERE playlist_id = {PH}", (playlist_id,)
         ).fetchone()
     return row["prompt"] if row else None
 
 
 def get_playlist_source(playlist_id: str) -> Optional[str]:
-    with _get_conn(HISTORY_PATH) as conn:
+    with db_conn(HISTORY_PATH) as conn:
         row = conn.execute(
-            "SELECT source_id FROM playlist_prompts WHERE playlist_id = ?", (playlist_id,)
+            f"SELECT source_id FROM playlist_prompts WHERE playlist_id = {PH}", (playlist_id,)
         ).fetchone()
     return row["source_id"] if row else None
 
 
 def get_playlist_anchors(playlist_id: str) -> list:
-    with _get_conn(HISTORY_PATH) as conn:
+    with db_conn(HISTORY_PATH) as conn:
         row = conn.execute(
-            "SELECT anchors FROM playlist_prompts WHERE playlist_id = ?", (playlist_id,)
+            f"SELECT anchors FROM playlist_prompts WHERE playlist_id = {PH}", (playlist_id,)
         ).fetchone()
     if not row or not row["anchors"]:
         return []
@@ -122,14 +121,16 @@ def get_playlist_anchors(playlist_id: str) -> list:
 # ---------------------------------------------------------------------------
 
 def save_generate(user_id: str, entry: dict):
-    with _get_conn(HISTORY_PATH) as conn:
-        conn.execute("""
+    now = datetime.now().isoformat()
+    with db_conn(HISTORY_PATH) as conn:
+        conn.execute(f"""
             INSERT INTO history
                 (user_id, action, created_at, playlist_id, playlist_name, prompt,
                  checked_songs, selected_songs, execution_time)
-            VALUES (?, 'generate', datetime('now'), ?, ?, ?, ?, ?, ?)
+            VALUES ({PH}, 'generate', {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
         """, (
             user_id,
+            now,
             entry['playlist_id'],
             entry['playlist_name'],
             entry['prompt'],
@@ -140,15 +141,17 @@ def save_generate(user_id: str, entry: dict):
 
 
 def save_sync(user_id: str, results: dict, execution_time: str):
-    with _get_conn(HISTORY_PATH) as conn:
+    now = datetime.now().isoformat()
+    with db_conn(HISTORY_PATH) as conn:
         for pid, v in results.items():
-            conn.execute("""
+            conn.execute(f"""
                 INSERT INTO history
                     (user_id, action, created_at, playlist_id, playlist_name,
                      checked_songs, selected_songs, removed_songs, execution_time)
-                VALUES (?, 'sync', datetime('now'), ?, ?, ?, ?, ?, ?)
+                VALUES ({PH}, 'sync', {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
             """, (
                 user_id,
+                now,
                 pid,
                 v.get('name', ''),
                 v.get('checked', 0),
@@ -159,9 +162,9 @@ def save_sync(user_id: str, results: dict, execution_time: str):
 
 
 def get_history(user_id: str) -> list:
-    with _get_conn(HISTORY_PATH) as conn:
-        rows = conn.execute("""
-            SELECT * FROM history WHERE user_id = ?
+    with db_conn(HISTORY_PATH) as conn:
+        rows = conn.execute(f"""
+            SELECT * FROM history WHERE user_id = {PH}
             ORDER BY created_at DESC LIMIT 100
         """, (user_id,)).fetchall()
     return [dict(r) for r in rows]
@@ -207,10 +210,10 @@ def _refresh_token(user_id: str, refresh_token: str) -> dict:
 
 def save_token(user_id: str, token_data: dict):
     expires_at = int(time.time()) + token_data["expires_in"]
-    with _get_conn(DB_PATH) as conn:
-        conn.execute("""
+    with db_conn(DB_PATH) as conn:
+        conn.execute(f"""
             INSERT INTO tokens (user_id, access_token, refresh_token, expires_at)
-            VALUES (?, ?, ?, ?)
+            VALUES ({PH}, {PH}, {PH}, {PH})
             ON CONFLICT(user_id) DO UPDATE SET
                 access_token  = excluded.access_token,
                 refresh_token = excluded.refresh_token,
@@ -219,8 +222,10 @@ def save_token(user_id: str, token_data: dict):
 
 
 def get_valid_token(user_id: str) -> Optional[str]:
-    with _get_conn(DB_PATH) as conn:
-        row = conn.execute("SELECT * FROM tokens WHERE user_id = ?", (user_id,)).fetchone()
+    with db_conn(DB_PATH) as conn:
+        row = conn.execute(
+            f"SELECT * FROM tokens WHERE user_id = {PH}", (user_id,)
+        ).fetchone()
     if not row:
         return None
     if row["expires_at"] - time.time() < 60:
