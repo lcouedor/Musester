@@ -33,6 +33,10 @@ def create_app() -> Flask:
     def index():
         return send_from_directory(FRONTEND_DIR, 'index.html')
 
+    @app.route('/<path:filename>')
+    def static_files(filename):
+        return send_from_directory(FRONTEND_DIR, filename)
+
     @app.route('/api')
     def home():
         return jsonify({'error': None, 'data': {'message': 'Musester API is running'}})
