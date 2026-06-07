@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: musester
+    runtime: python
+    buildCommand: pip install -r api/requirements.txt
+    startCommand: gunicorn --chdir api --bind 0.0.0.0:$PORT --workers 2 --timeout 300 app:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SPOTIFY_ID
+        sync: false
+      - key: SPOTIFY_SECRET
+        sync: false
+      - key: SPOTIFY_USERNAME
+        sync: false
+      - key: SPOTIFY_REDIRECT
+        sync: false
+      - key: GPT_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ALLOWED_USERS
+        sync: false

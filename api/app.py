@@ -21,8 +21,9 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
 def create_app() -> Flask:
     app = Flask(__name__, static_folder=FRONTEND_DIR)
     app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
+    is_prod = bool(os.getenv('RENDER') or os.getenv('FLASK_ENV') == 'production')
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    app.config['SESSION_COOKIE_SECURE']   = False
+    app.config['SESSION_COOKIE_SECURE']   = is_prod
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     CORS(app)
     app.register_blueprint(bp)

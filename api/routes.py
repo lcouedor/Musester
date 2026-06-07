@@ -95,6 +95,11 @@ def callback():
     code       = request.args.get("code")
     token_data = exchange_code(code)
     user_id    = SpotifyService.get_user_id(token_data["access_token"])
+
+    if config.ALLOWED_USERS and user_id not in config.ALLOWED_USERS:
+        logger.warning("Unauthorized login attempt by '%s'", user_id)
+        return redirect(f"{config.FRONTEND_URL}?error=unauthorized")
+
     save_token(user_id, token_data)
     session["user_id"] = user_id
 
