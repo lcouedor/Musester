@@ -1,6 +1,6 @@
 # Musester
 
-Trie automatiquement les morceaux d'une playlist Spotify source dans de nouvelles playlists, en fonction d'un prompt décrivant une ambiance ou un contexte d'écoute. 
+Trie automatiquement les morceaux d'une playlist Spotify source dans de nouvelles playlists, en fonction d'un prompt décrivant une ambiance ou un contexte d'écoute.
 La classification est assurée par GPT-4.1.
 
 ---
@@ -16,9 +16,10 @@ La classification est assurée par GPT-4.1.
 
 ## Stack
 
-- **Back** — Python / Flask, Spotipy, OpenAI SDK
+- **Back** — Python / Flask, Spotipy, OpenAI SDK, gunicorn
 - **Front** — HTML/CSS/JS vanilla, servi par Flask
-- **Auth** — OAuth2 Spotify, sessions Flask, SQLite pour les tokens
+- **Auth** — OAuth2 Spotify, sessions Flask
+- **BDD** — SQLite en dev, PostgreSQL (Supabase) en prod
 
 ---
 
@@ -30,24 +31,28 @@ musester/
 │   ├── app.py                  # Entry point Flask
 │   ├── routes.py               # Endpoints
 │   ├── config.py               # Variables et constantes
+│   ├── db.py                   # Abstraction SQLite / PostgreSQL
 │   ├── core/
 │   │   ├── models.py           # Dataclasses Track, Decision
 │   │   └── playlist.py         # Logique métier
 │   ├── services/
-│   │   ├── auth.py             # OAuth Spotify + gestion tokens
+│   │   ├── auth.py             # OAuth Spotify + gestion tokens/historique
 │   │   ├── spotify.py          # Wrapper Spotipy
 │   │   └── classifier.py       # Wrapper OpenAI
-│   ├── tokens.db               # Base SQLite (gitignorée)
-│   ├── decisions.log           # Log des décisions GPT (écrasé à chaque generate, gitignoré également)
+│   ├── tokens.db               # Base SQLite dev (gitignorée)
+│   ├── history.db              # Historique SQLite dev (gitignorée)
+│   ├── decisions.log           # Log des décisions GPT (gitignorée)
 │   └── requirements.txt
 ├── web/
 │   └── index.html              # Front
-└── start.sh                    # Script de lancement
+├── requirements.txt            # Délègue à api/requirements.txt (pour Render)
+├── Procfile                    # Commande gunicorn pour Render
+└── render.yaml                 # Config déploiement Render
 ```
 
 ---
 
-## Installation
+## Dev local
 
 ### Prérequis
 - Python 3.10+
@@ -65,7 +70,7 @@ myenv/bin/pip install -r requirements.txt
 
 ### 2. Variables d'environnement
 
-Crée un fichier `.env` dans `api/` :
+Crée un fichier `.env` dans `api/` (voir `api/.env.example`) :
 
 ```env
 SPOTIFY_ID=ton_client_id
@@ -75,6 +80,12 @@ SPOTIFY_USERNAME=ton_username_spotify
 GPT_KEY=ta_cle_openai
 SECRET_KEY=une_chaine_aleatoire_longue
 FRONTEND_URL=http://127.0.0.1:5001
+
+# Laisser vide en dev = SQLite local
+DATABASE_URL=
+
+# Laisser vide en dev = tout le monde autorisé
+ALLOWED_USERS=
 ```
 
 Pour générer une `SECRET_KEY` :
@@ -89,18 +100,65 @@ Dans ton app Spotify Developer → **Edit** → **Redirect URIs**, ajoute :
 http://127.0.0.1:5001/auth/callback
 ```
 
-Pour autoriser des proches à utiliser l'app (mode development, max 25 users) :
-Dashboard → **User Management** → ajoute leur email Spotify.
-
----
-
-## Lancer le projet
+### 4. Lancer
 
 ```bash
-./start.sh
+cd api
+myenv/bin/python app.py
 ```
 
 Puis ouvre [http://127.0.0.1:5001](http://127.0.0.1:5001)
+
+---
+
+## Déploiement (Render + Supabase)
+
+### Base de données Supabase
+
+1. Crée un projet sur [supabase.com](https://supabase.com)
+2. Applique le schéma initial (tables `tokens`, `history`, `playlist_prompts`) via **SQL Editor** ou les migrations
+3. Récupère la **connection string Transaction pooler** : Settings → Database → Transaction pooler
+   ```
+   postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+   ```
+
+### Render
+
+1. Crée un **Web Service** sur [render.com](https://render.com), connecte le repo GitHub — Render détecte le `render.yaml` automatiquement
+2. Configure les variables d'environnement :
+
+| Variable | Valeur |
+|---|---|
+| `SPOTIFY_ID` | Client ID de ton app Spotify |
+| `SPOTIFY_SECRET` | Client Secret de ton app Spotify |
+| `SPOTIFY_USERNAME` | Ton username Spotify |
+| `SPOTIFY_REDIRECT` | `https://TON-APP.onrender.com/auth/callback` |
+| `GPT_KEY` | Clé API OpenAI |
+| `FRONTEND_URL` | `https://TON-APP.onrender.com` |
+| `DATABASE_URL` | Connection string Supabase (Transaction pooler) |
+| `ALLOWED_USERS` | Spotify user IDs autorisés, séparés par des virgules |
+| `SECRET_KEY` | Généré automatiquement par Render |
+
+3. Ajoute l'URI de callback dans le dashboard Spotify Developer :
+   ```
+   https://TON-APP.onrender.com/auth/callback
+   ```
+
+### Whitelist (`ALLOWED_USERS`)
+
+Pour restreindre l'accès à certains comptes Spotify, liste leurs IDs séparés par des virgules :
+```
+ALLOWED_USERS=id_user1,id_user2
+```
+
+Ton Spotify user ID se trouve dans l'URL de ton profil sur [open.spotify.com](https://open.spotify.com/user/) ou dans les logs Render après une première connexion.
+
+Laisser vide = tout le monde peut se connecter (déconseillé en prod, ça consomme tes crédits OpenAI).
+
+### Base de données
+
+En local (`DATABASE_URL` vide) → SQLite (`tokens.db` + `history.db` dans `api/`)
+En prod (`DATABASE_URL` défini) → PostgreSQL Supabase, les fichiers SQLite sont ignorés
 
 ---
 
@@ -124,55 +182,49 @@ Supprime la session.
 ---
 
 ### `POST /generate`
-Crée une nouvelle playlist à partir d'un prompt.
+Crée une ou plusieurs playlists à partir de prompts.
 
 **Body**
 ```json
 {
   "source_id": "https://open.spotify.com/playlist/XXX",
-  "playlist_name": "Chill Soir",
-  "playlist_prompt": "Musiques calmes et introspectives pour la fin de soirée"
+  "multi_pass": true,
+  "playlists": [
+    { "name": "Chill Soir", "prompt": "Musiques calmes pour la fin de soirée", "anchors": [] },
+    { "name": "Focus", "prompt": "Sans paroles, pour travailler", "anchors": [] }
+  ]
 }
 ```
-`source_id` accepte une URL complète, un ID brut, ou `"liked"` pour les titres likés.
+`source_id` accepte une URL complète, un ID brut, ou `"liked"` pour les titres likés. Maximum 3 playlists par appel.
 
-**Réponse**
-```json
-{
-  "error": null,
-  "execution_time": "18.4s",
-  "data": {
-    "playlist_id": "...",
-    "checked_songs": 312,
-    "selected_songs": 47,
-    "decisions": [...]
-  }
-}
-```
+**Réponse** (SSE)
+Stream d'événements `progress` / `status` / `done`.
 
 ---
 
 ### `POST /sync`
-Met à jour toutes les playlists `IA-` : ajoute les nouveaux morceaux de la source correspondant au prompt, supprime ceux qui ne sont plus dans la source.
+Met à jour les playlists `IA-` : ajoute les nouveaux morceaux, supprime ceux retirés de la source (mode destructif) ou ajoute seulement (mode additif).
 
 **Body**
 ```json
 {
-  "source_id": "https://open.spotify.com/playlist/XXX"
+  "source_id": "https://open.spotify.com/playlist/XXX",
+  "destructive": true,
+  "target_playlist_ids": ["id1", "id2"]
 }
 ```
+`target_playlist_ids` est optionnel — si absent, toutes les playlists `IA-` sont synchronisées.
 
-**Réponse**
-```json
-{
-  "error": null,
-  "execution_time": "24.1s",
-  "data": {
-    "playlist_id_1": { "name": "IA-Chill Soir", "removed": 2, "added": 5, "checked": 12 },
-    "playlist_id_2": { "name": "IA-Workout",    "removed": 0, "added": 3, "checked": 8  }
-  }
-}
-```
+---
+
+### `GET /source-tracks`
+Retourne les morceaux d'une playlist source (utilisé pour le sélecteur d'anchors).
+
+### `GET /playlists`
+Retourne les playlists `IA-` de l'utilisateur avec leur prompt et date de dernier sync.
+
+### `GET /history`
+Retourne l'historique des générations et synchronisations.
 
 ---
 
@@ -191,6 +243,7 @@ Paramètres ajustables dans `api/config.py` :
 
 ## Notes
 
-- Le fichier `decisions.log` est écrasé à chaque `/generate` — il contient le détail des décisions GPT (morceau inclus/exclu + justification)
-- Le `/sync` se base sur la date du dernier morceau ajouté à chaque playlist `IA-` pour ne traiter que les nouveaux morceaux de la source
-- `tokens.db` et `.env` sont gitignorés — ne jamais les committer
+- `decisions.log` est écrasé à chaque `/generate` — détail des décisions GPT (inclus/exclu + justification)
+- Le `/sync` se base sur la date du dernier morceau ajouté pour ne traiter que les nouveaux morceaux
+- En mode sync additif, la description de la playlist est mise à jour avec la date et la source utilisée
+- `tokens.db`, `history.db` et `.env` sont gitignorés — ne jamais les committer
