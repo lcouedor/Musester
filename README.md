@@ -44,7 +44,10 @@ musester/
 │   ├── decisions.log           # Log des décisions GPT (gitignorée)
 │   └── requirements.txt
 ├── web/
-│   └── index.html              # Front
+│   ├── index.html              # Structure — 3 écrans (Accueil / Générer / Historique) + nav du bas
+│   ├── styles.css               # Design system (tokens, composants)
+│   ├── app.js                   # Logique front, appels API, SSE
+│   └── Logo.png
 ├── requirements.txt            # Délègue à api/requirements.txt (pour Render)
 ├── Procfile                    # Commande gunicorn pour Render
 └── render.yaml                 # Config déploiement Render
@@ -151,7 +154,7 @@ Le back (API) tourne sur Render, le front (statique) sur Vercel — deux domaine
 1. Importe le repo GitHub sur [vercel.com/new](https://vercel.com/new)
 2. **Root Directory** : `web` — **Framework Preset** : `Other` (site statique, pas de build command)
 3. Déploie — le domaine stable du projet (ex. `musester.vercel.app`, pas l'URL de déploiement à hash aléatoire) est celui à renseigner dans `FRONTEND_URL` sur Render
-4. Dans `web/index.html`, la constante `API` pointe vers l'URL Render en prod et bascule en relatif (`''`) en local/dev — à adapter si le domaine Render change
+4. Dans `web/app.js`, la constante `API` pointe vers l'URL Render en prod et bascule en relatif (`''`) en local/dev — à adapter si le domaine Render change
 
 ### Whitelist (`ALLOWED_USERS`)
 
