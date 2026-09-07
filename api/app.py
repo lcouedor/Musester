@@ -22,10 +22,11 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder=FRONTEND_DIR)
     app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
     is_prod = bool(os.getenv('RENDER') or os.getenv('FLASK_ENV') == 'production')
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    # SameSite=None est nécessaire car le front (Vercel) et l'API (Render) sont sur des domaines différents.
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_prod else 'Lax'
     app.config['SESSION_COOKIE_SECURE']   = is_prod
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    CORS(app)
+    CORS(app, origins=[config.FRONTEND_URL], supports_credentials=True)
     app.register_blueprint(bp)
     init_db()
 

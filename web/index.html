@@ -312,6 +312,13 @@
     #log .entry.info .msg { color: var(--text); }
 
     .hidden { display: none !important; }
+
+    .spinner {
+      width: 28px; height: 28px; margin: 0 auto 16px;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .empty  { font-size: 0.8rem; color: var(--muted); font-style: italic; }
     .divider { border: none; border-top: 1px solid var(--border); }
   </style>
@@ -326,14 +333,22 @@
     </div>
     <div id="status-bar">
       <span class="dot"></span>
-      <span id="status-text">Non connecté</span>
+      <span id="status-text">Connexion…</span>
       <button class="btn btn-ghost btn-sm hidden" id="btn-logout"
         style="margin-left:12px" onclick="logout()">Déconnexion</button>
     </div>
   </header>
 
+  <!-- Loading (réveil du serveur) -->
+  <div class="login-wrap" id="card-loading">
+    <div class="card" style="max-width:460px;width:100%;text-align:center">
+      <div class="spinner"></div>
+      <p class="card-desc" id="loading-text">Connexion au serveur…</p>
+    </div>
+  </div>
+
   <!-- Login -->
-  <div class="login-wrap" id="card-login">
+  <div class="login-wrap hidden" id="card-login">
     <div class="card" style="max-width:460px;width:100%">
       <span class="card-title">Connexion</span>
       <p class="card-desc">Connecte ton compte Spotify pour commencer à trier tes playlists.</p>
@@ -492,7 +507,11 @@
 </div>
 
 <script>
-  const API = ''
+  // En local (servi par Flask sur 127.0.0.1), front et API sont sur le même host.
+  // En prod (Vercel), le front appelle l'API Render en cross-origin.
+  const API = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    ? ''
+    : 'https://musester.onrender.com'
 
   // ── Log ──────────────────────────────────────────────────────────────────
   function log(msg, type = 'info') {
@@ -517,12 +536,20 @@
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   async function checkAuth() {
+    const slowTimer = setTimeout(() => {
+      const el = document.getElementById('loading-text')
+      if (el) el.textContent = 'Le serveur se réveille, ça peut prendre jusqu\'à 50s…'
+    }, 4000)
     try {
-      const res  = await fetch(`${API}/auth/me`)
+      const res  = await fetch(`${API}/auth/me`, { credentials: 'include' })
       const data = await res.json()
       if (res.ok && data.data?.user_id) setConnected(data.data.user_id)
       else setDisconnected()
     } catch { setDisconnected() }
+    finally {
+      clearTimeout(slowTimer)
+      document.getElementById('card-loading').classList.add('hidden')
+    }
   }
 
   function setConnected(userId) {
@@ -545,9 +572,9 @@
     document.getElementById('btn-logout').classList.add('hidden')
   }
 
-  function login()  { window.location.href = '/auth/login' }
+  function login()  { window.location.href = `${API}/auth/login` }
   async function logout() {
-    await fetch(`${API}/auth/logout`)
+    await fetch(`${API}/auth/logout`, { credentials: 'include' })
     setDisconnected()
     log('Déconnecté')
   }
@@ -557,6 +584,7 @@
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(body),
     }).then(async res => {
       if (!res.ok) {
@@ -730,7 +758,7 @@
     if (grid) grid.innerHTML = '<span class="anchor-loading">Chargement des morceaux…</span>'
 
     try {
-      const res  = await fetch(`${API}/source-tracks?source_id=${encodeURIComponent(source)}`)
+      const res  = await fetch(`${API}/source-tracks?source_id=${encodeURIComponent(source)}`, { credentials: 'include' })
       const data = await res.json()
       if (!res.ok || !data.data?.length) {
         if (grid) grid.innerHTML = '<span class="anchor-loading">Aucun morceau trouvé</span>'
@@ -909,7 +937,7 @@
   async function ensureSyncPlaylists() {
     if (_syncPlaylists.length) return
     try {
-      const res  = await fetch(`${API}/playlists`)
+      const res  = await fetch(`${API}/playlists`, { credentials: 'include' })
       const data = await res.json()
       _syncPlaylists = (data.data || []).map(p => ({ id: p.id, name: p.name }))
     } catch { _syncPlaylists = [] }
@@ -1044,7 +1072,7 @@
   async function loadPlaylists() {
     const container = document.getElementById('playlist-list')
     try {
-      const res  = await fetch(`${API}/playlists`)
+      const res  = await fetch(`${API}/playlists`, { credentials: 'include' })
       const data = await res.json()
       if (!res.ok || !data.data?.length) {
         container.innerHTML = '<span class="empty">Aucune playlist générée</span>'
@@ -1089,6 +1117,7 @@
     try {
       const res = await fetch(`${API}/playlists/${id}/prompt`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ prompt }),
       })
       if (res.ok) {
@@ -1106,7 +1135,7 @@
 
   async function loadHistory() {
     try {
-      const res  = await fetch(`${API}/history`)
+      const res  = await fetch(`${API}/history`, { credentials: 'include' })
       const data = await res.json()
       _allHistory = (res.ok && data.data?.length) ? data.data : []
     } catch {
