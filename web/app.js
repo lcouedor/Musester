@@ -20,6 +20,44 @@ setViewportHeight()
 window.addEventListener('resize', setViewportHeight)
 window.visualViewport?.addEventListener('resize', setViewportHeight)
 
+// ── Debug (temporaire) ───────────────────────────────────────────────────
+// Tape 5x sur "Musester" en haut pour afficher les mesures réelles de
+// l'appareil — aucun devtools accessible sur iPhone pour aller les chercher.
+let _wordmarkTaps = []
+function tapWordmark() {
+  const now = Date.now()
+  _wordmarkTaps = _wordmarkTaps.filter(t => now - t < 2000)
+  _wordmarkTaps.push(now)
+  if (_wordmarkTaps.length >= 5) { _wordmarkTaps = []; showDebugInfo() }
+}
+
+function showDebugInfo() {
+  const probe = document.createElement('div')
+  probe.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;padding-bottom:env(safe-area-inset-bottom);visibility:hidden;'
+  document.body.appendChild(probe)
+  const safeBottomPx = getComputedStyle(probe).paddingBottom
+  probe.remove()
+
+  const shell = document.getElementById('app')?.getBoundingClientRect()
+  const nav   = document.getElementById('bottom-nav')?.getBoundingClientRect()
+
+  const lines = [
+    `innerHeight: ${window.innerHeight}`,
+    `visualViewport.height: ${window.visualViewport?.height}`,
+    `documentElement.clientHeight: ${document.documentElement.clientHeight}`,
+    `screen: ${screen.width}x${screen.height} (avail ${screen.availWidth}x${screen.availHeight})`,
+    `devicePixelRatio: ${window.devicePixelRatio}`,
+    `standalone (matchMedia): ${window.matchMedia('(display-mode: standalone)').matches}`,
+    `navigator.standalone: ${window.navigator.standalone}`,
+    `--app-vh: ${getComputedStyle(document.documentElement).getPropertyValue('--app-vh')}`,
+    `safe-area-inset-bottom: ${safeBottomPx}`,
+    `#app rect: top=${shell?.top} height=${shell?.height} bottom=${shell?.bottom}`,
+    `#bottom-nav rect: top=${nav?.top} height=${nav?.height} bottom=${nav?.bottom}`,
+    `gap below nav: ${window.innerHeight - (nav?.bottom ?? 0)}`,
+  ]
+  alert(lines.join('\n'))
+}
+
 // ── Session token ────────────────────────────────────────────────────────
 // Pas de cookie : Safari (ITP) ne laisse pas vivre un cookie cross-site entre
 // le front (Vercel) et l'API (Render). Le token arrive dans le fragment d'URL
