@@ -17,12 +17,14 @@
 <body>
 
   <!-- Loading (réveil du serveur) -->
-  <div id="view-loading" class="center-view">
-    <div class="center-card">
-      <img class="logo-mark" src="/Logo.png" alt="" />
+  <div id="view-loading" class="splash-view">
+    <div class="splash-center">
+      <img class="splash-logo" src="/Logo.png" alt="" />
+      <h1 class="splash-title">Muse<span>ster</span></h1>
       <div class="spinner"></div>
-      <p id="loading-text">Connexion au serveur…</p>
+      <p id="loading-text" class="splash-status">Connexion au serveur…</p>
     </div>
+    <p class="splash-version">v4.0</p>
   </div>
 
   <!-- Login -->
@@ -114,11 +116,6 @@
             </button>
           </div>
           <div class="list" id="playlist-list"><span class="muted-note">Chargement…</span></div>
-        </div>
-
-        <div class="app-footer">
-          <img src="/Logo.png" alt="" />
-          <span>Musester <b class="mono">v4.0</b></span>
         </div>
 
       </section>

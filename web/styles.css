@@ -138,6 +138,31 @@ button { cursor: pointer; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Splash (chargement) ──────────────────────────────────────────────── */
+
+.splash-view {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 100vh; min-height: 100dvh; position: relative;
+  padding: calc(24px + env(safe-area-inset-top)) 24px calc(20px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+.splash-center { display: flex; flex-direction: column; align-items: center; }
+.splash-logo {
+  width: 84px; height: 84px; border-radius: 22px; margin-bottom: 22px; display: block;
+  box-shadow: 0 0 0 1px var(--border), 0 22px 48px -18px rgba(52,216,116,.45);
+}
+.splash-title {
+  font-family: var(--font-display); font-weight: 800; font-size: 27px; letter-spacing: -0.02em;
+  margin-bottom: 30px;
+}
+.splash-title span { color: var(--accent); }
+.splash-status { color: var(--muted); font-size: 13.5px; margin-top: 2px; min-height: 1.2em; }
+.splash-version {
+  position: absolute; bottom: calc(20px + env(safe-area-inset-bottom)); left: 0; right: 0;
+  text-align: center; font-family: var(--font-mono); font-size: 11.5px;
+  color: var(--muted-2); letter-spacing: .04em;
+}
+
 /* ── Sections & cards ──────────────────────────────────────────────────── */
 
 .section { display: flex; flex-direction: column; gap: 10px; }

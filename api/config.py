@@ -33,7 +33,7 @@ PLAYLIST_PREFIX = "IA-"
 
 # Server
 PORT         = int(os.getenv('PORT', 5001))
-FRONTEND_URL = os.getenv('FRONTEND_URL', f'http://127.0.0.1:{PORT}')
+FRONTEND_URL = os.getenv('FRONTEND_URL', f'http://127.0.0.1:{PORT}').strip().rstrip('/')
 
 # Whitelist (vide = tout le monde autorisé, utile en dev)
 _raw_allowed = os.getenv('ALLOWED_USERS', '')
