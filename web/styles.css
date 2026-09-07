@@ -82,15 +82,19 @@ button { cursor: pointer; }
   flex: 1; min-height: 0;
   overflow-y: auto; overflow-x: hidden;
   -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
-  padding: 4px 20px 20px;
+  padding: 4px 20px calc(var(--nav-h) + var(--safe-b) + 16px);
 }
 .screens.locked { overflow: hidden; }
 .screen { display: flex; flex-direction: column; gap: 18px; }
 
 /* ── Bottom nav ────────────────────────────────────────────────────────── */
-
+/* position:fixed (not a static flex child) so it's pinned to the true
+   device bottom regardless of any 100dvh/.shell height mismatch. Safe
+   from the iOS "fixed bar drifts during scroll" bug because .screens,
+   not the document, is what actually scrolls. */
 .bottom-nav {
-  flex-shrink: 0;
+  position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
+  width: 100%; max-width: var(--shell-w);
   display: flex; z-index: 20;
   background: var(--bg-elevated); backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-soft);
