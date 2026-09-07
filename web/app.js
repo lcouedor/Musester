@@ -8,6 +8,18 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 }
 
+// ── Viewport height ──────────────────────────────────────────────────────
+// Filet de sécurité si 100dvh se révèle peu fiable dans ce contexte précis
+// (PWA standalone) : on mesure la hauteur réellement visible et on la pousse
+// dans une variable CSS que .shell utilise en priorité.
+function setViewportHeight() {
+  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight
+  document.documentElement.style.setProperty('--app-vh', `${h}px`)
+}
+setViewportHeight()
+window.addEventListener('resize', setViewportHeight)
+window.visualViewport?.addEventListener('resize', setViewportHeight)
+
 // ── Session token ────────────────────────────────────────────────────────
 // Pas de cookie : Safari (ITP) ne laisse pas vivre un cookie cross-site entre
 // le front (Vercel) et l'API (Render). Le token arrive dans le fragment d'URL
@@ -80,7 +92,6 @@ async function checkAuth() {
 function setConnected(userId) {
   document.getElementById('view-login').classList.add('hidden')
   document.getElementById('app').classList.remove('hidden')
-  document.getElementById('bottom-nav').classList.remove('hidden')
   document.getElementById('account-label').textContent = userId
   renderTabs()
   renderActivePanel()
@@ -91,7 +102,6 @@ function setConnected(userId) {
 
 function setDisconnected() {
   document.getElementById('app').classList.add('hidden')
-  document.getElementById('bottom-nav').classList.add('hidden')
   document.getElementById('view-login').classList.remove('hidden')
 }
 

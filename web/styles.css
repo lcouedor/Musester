@@ -53,7 +53,7 @@ button { cursor: pointer; }
 
 .shell {
   max-width: var(--shell-w); margin: 0 auto;
-  height: 100vh; height: 100dvh;
+  height: 100vh; height: 100dvh; height: var(--app-vh, 100dvh);
   display: flex; flex-direction: column;
   position: relative; overflow: hidden;
 }
@@ -82,19 +82,18 @@ button { cursor: pointer; }
   flex: 1; min-height: 0;
   overflow-y: auto; overflow-x: hidden;
   -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
-  padding: 4px 20px calc(var(--nav-h) + var(--safe-b) + 16px);
+  padding: 4px 20px 20px;
 }
 .screens.locked { overflow: hidden; }
 .screen { display: flex; flex-direction: column; gap: 18px; }
 
 /* ── Bottom nav ────────────────────────────────────────────────────────── */
-/* position:fixed (not a static flex child) so it's pinned to the true
-   device bottom regardless of any 100dvh/.shell height mismatch. Safe
-   from the iOS "fixed bar drifts during scroll" bug because .screens,
-   not the document, is what actually scrolls. */
+/* Normal flex child of .shell (height:100dvh, flex-direction:column) — the
+   last item in a column that's exactly the screen's height lands exactly at
+   the bottom, no position:fixed/absolute needed and no safe-area math to
+   reconcile against a separately-computed viewport height. */
 .bottom-nav {
-  position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
-  width: 100%; max-width: var(--shell-w);
+  flex-shrink: 0;
   display: flex; z-index: 20;
   background: var(--bg-elevated); backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-soft);
