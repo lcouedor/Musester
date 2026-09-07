@@ -10,7 +10,7 @@ from flask import Blueprint, request, jsonify, redirect, session, Response, stre
 from core.playlist import generate_playlist_stream, generate_multi_playlist_stream, sync_all_playlists_stream
 from services.auth import (
     get_auth_url, exchange_code, save_token, get_valid_token,
-    save_generate, save_sync, get_history,
+    save_generate, save_sync, get_history, get_history_decisions,
     save_playlist_prompt, get_playlist_prompt,
 )
 from services.spotify import SpotifyService
@@ -162,13 +162,19 @@ def generate(access_token: str):
         import json as _json
         all_results = []
         for event in stream_fn():
-            yield event
             try:
                 data = _json.loads(event.removeprefix("data: ").strip())
-                if data.get("kind") == "done":
-                    all_results = data.get("results", [])
             except Exception:
-                pass
+                data = None
+
+            if data and data.get("kind") == "done":
+                all_results = data.get("results", [])
+                # Le détail des décisions (GPT) reste côté serveur pour la persistance —
+                # inutile de l'envoyer au client ici, il est récupéré à la demande via /history/<id>/decisions.
+                slim = [{k: v for k, v in r.items() if k != "decisions"} for r in all_results]
+                yield f"data: {_json.dumps({'kind': 'done', 'results': slim})}\n\n"
+            else:
+                yield event
 
         for pl_result in all_results:
             pidx    = pl_result.get("playlist_idx", 0)
@@ -181,6 +187,7 @@ def generate(access_token: str):
                     "checked_songs":  pl_result.get("checked_songs", 0),
                     "selected_songs": pl_result.get("selected_songs", 0),
                     "execution_time": _elapsed(start),
+                    "decisions":      pl_result.get("decisions"),
                 })
 
     return Response(
@@ -305,3 +312,13 @@ def update_prompt(access_token: str, playlist_id: str):
 def history(access_token: str):
     user_id = session.get("user_id")
     return _ok(get_history(user_id))
+
+
+@bp.route("/history/<int:history_id>/decisions", methods=["GET"])
+@require_auth
+def history_decisions(access_token: str, history_id: int):
+    user_id = session.get("user_id")
+    decisions = get_history_decisions(user_id, history_id)
+    if decisions is None:
+        return _err("Aucun détail de décision pour cette entrée", 404)
+    return _ok(decisions)

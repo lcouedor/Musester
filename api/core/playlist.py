@@ -171,6 +171,7 @@ def generate_playlist_stream(
         "playlist_name":  playlist_name,
         "checked_songs":  len(tracks),
         "selected_songs": len(selected),
+        "decisions":      [{"title": d.title, "include": d.include, "reason": d.reason} for d in decisions],
     }])
 
 
@@ -293,6 +294,7 @@ def generate_multi_playlist_stream(
             "playlist_name":  spec["name"],
             "checked_songs":  len(tracks),
             "selected_songs": len(selected),
+            "decisions":      [{"title": d.title, "include": d.include, "reason": d.reason} for d in decisions],
         })
         log_entries.append({
             "name":      spec["name"],

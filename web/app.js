@@ -684,29 +684,95 @@ function renderHistory() {
   }
 
   const items = _historyLimit === null ? _allHistory : _allHistory.slice(0, _historyLimit)
-  container.innerHTML = items.map(h => {
+  container.innerHTML = ''
+  items.forEach(h => {
     const isGen  = h.action === 'generate'
     const name   = h.playlist_name || h.playlist_id || '—'
     const count  = isGen ? `${h.selected_songs}/${h.checked_songs}` : `+${h.selected_songs||0} / -${h.removed_songs||0}`
     const detail = isGen ? (h.prompt || '') : `sync — ${h.checked_songs||0} vérifiés`
-    return `
-      <div class="history-item">
-        <span class="hi-badge ${h.action}">${isGen ? ICON_GENERATE : ICON_SYNC}</span>
-        <div class="hi-body">
-          <div class="hi-top">
-            <span class="hi-name">${isGen ? 'IA-' : ''}${esc(name)}</span>
-            <span class="hi-count mono">${count}</span>
-          </div>
-          <p class="hi-detail">${esc(detail)}</p>
-          <p class="hi-date">${formatDate(h.created_at)}</p>
+
+    const el = document.createElement('div')
+    el.className = 'history-item' + (isGen ? ' clickable' : '')
+    el.innerHTML = `
+      <span class="hi-badge ${h.action}">${isGen ? ICON_GENERATE : ICON_SYNC}</span>
+      <div class="hi-body">
+        <div class="hi-top">
+          <span class="hi-name">${isGen ? 'IA-' : ''}${esc(name)}</span>
+          <span class="hi-count mono">${count}</span>
         </div>
+        <p class="hi-detail">${esc(detail)}</p>
+        <p class="hi-date">${formatDate(h.created_at)}</p>
       </div>`
-  }).join('')
+    if (isGen) el.addEventListener('click', () => openDecisions(h.id, `IA-${name}`, detail))
+    container.appendChild(el)
+  })
 }
 
 function setHistoryLimit(n) {
   _historyLimit = n
   renderHistory()
+}
+
+// ── Decisions drawer ─────────────────────────────────────────────────────
+const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+const ICON_X     = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+
+let _decisionsCache = new Map() // history_id -> decisions[]
+let _currentDecisions = []
+
+async function openDecisions(historyId, title, subtitle) {
+  document.getElementById('decisions-title').textContent = title
+  document.getElementById('decisions-subtitle').textContent = subtitle || ''
+  document.getElementById('decisions-search').value = ''
+  document.getElementById('decisions-overlay').classList.add('open')
+
+  const body = document.getElementById('decisions-body')
+  if (_decisionsCache.has(historyId)) {
+    _currentDecisions = _decisionsCache.get(historyId)
+    renderDecisions(_currentDecisions)
+    return
+  }
+
+  body.innerHTML = '<span class="muted-note">Chargement…</span>'
+  try {
+    const res  = await fetch(`${API}/history/${historyId}/decisions`, { credentials: 'include' })
+    const data = await res.json()
+    if (!res.ok || !data.data?.length) {
+      _currentDecisions = []
+      body.innerHTML = '<div class="empty-state"><span>Aucun détail enregistré pour cette génération.</span></div>'
+      return
+    }
+    _currentDecisions = data.data
+    _decisionsCache.set(historyId, _currentDecisions)
+    renderDecisions(_currentDecisions)
+  } catch {
+    body.innerHTML = '<div class="empty-state"><span>Erreur de chargement</span></div>'
+  }
+}
+
+function renderDecisions(list) {
+  const body = document.getElementById('decisions-body')
+  if (!list.length) {
+    body.innerHTML = '<div class="empty-state"><span>Aucun résultat</span></div>'
+    return
+  }
+  body.innerHTML = list.map(d => `
+    <div class="decision-row ${d.include ? 'include' : 'exclude'}">
+      <span class="d-mark">${d.include ? ICON_CHECK : ICON_X}</span>
+      <div class="d-body">
+        <div class="d-title">${esc(d.title)}</div>
+        <div class="d-reason">${esc(d.reason || '')}</div>
+      </div>
+    </div>`).join('')
+}
+
+function filterDecisions(query) {
+  const q = query.trim().toLowerCase()
+  renderDecisions(q ? _currentDecisions.filter(d => d.title.toLowerCase().includes(q)) : _currentDecisions)
+}
+
+function closeDecisions() {
+  document.getElementById('decisions-overlay').classList.remove('open')
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

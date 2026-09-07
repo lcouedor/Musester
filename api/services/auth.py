@@ -46,7 +46,8 @@ def init_db():
                 checked_songs  INTEGER,
                 selected_songs INTEGER,
                 removed_songs  INTEGER,
-                execution_time TEXT
+                execution_time TEXT,
+                decisions      TEXT
             )
         """)
         conn.execute("""
@@ -64,6 +65,10 @@ def init_db():
                 conn.execute(f"ALTER TABLE playlist_prompts ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass
+        try:
+            conn.execute("ALTER TABLE history ADD COLUMN decisions TEXT")
+        except sqlite3.OperationalError:
+            pass
     logger.info("DBs SQLite prêtes")
 
 
@@ -122,12 +127,13 @@ def get_playlist_anchors(playlist_id: str) -> list:
 
 def save_generate(user_id: str, entry: dict):
     now = datetime.now().isoformat()
+    decisions_json = json.dumps(entry['decisions']) if entry.get('decisions') else None
     with db_conn(HISTORY_PATH) as conn:
         conn.execute(f"""
             INSERT INTO history
                 (user_id, action, created_at, playlist_id, playlist_name, prompt,
-                 checked_songs, selected_songs, execution_time)
-            VALUES ({PH}, 'generate', {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
+                 checked_songs, selected_songs, execution_time, decisions)
+            VALUES ({PH}, 'generate', {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
         """, (
             user_id,
             now,
@@ -137,6 +143,7 @@ def save_generate(user_id: str, entry: dict):
             entry['checked_songs'],
             entry['selected_songs'],
             entry['execution_time'],
+            decisions_json,
         ))
 
 
@@ -164,10 +171,25 @@ def save_sync(user_id: str, results: dict, execution_time: str):
 def get_history(user_id: str) -> list:
     with db_conn(HISTORY_PATH) as conn:
         rows = conn.execute(f"""
-            SELECT * FROM history WHERE user_id = {PH}
+            SELECT id, user_id, action, created_at, playlist_id, playlist_name, prompt,
+                   checked_songs, selected_songs, removed_songs, execution_time
+            FROM history WHERE user_id = {PH}
             ORDER BY created_at DESC LIMIT 100
         """, (user_id,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_history_decisions(user_id: str, history_id: int) -> Optional[list]:
+    with db_conn(HISTORY_PATH) as conn:
+        row = conn.execute(f"""
+            SELECT decisions FROM history WHERE id = {PH} AND user_id = {PH}
+        """, (history_id, user_id)).fetchone()
+    if not row or not row["decisions"]:
+        return None
+    try:
+        return json.loads(row["decisions"])
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
