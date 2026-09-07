@@ -21,7 +21,7 @@ SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 
 def init_db():
     if DATABASE_URL:
-        logger.info("PostgreSQL mode — tables gérées par Supabase")
+        logger.info("PostgreSQL mode — tables gérées par Neon")
         return
 
     with db_conn(DB_PATH) as conn:

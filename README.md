@@ -19,7 +19,7 @@ La classification est assurée par GPT-4.1.
 - **Back** — Python / Flask, Spotipy, OpenAI SDK, gunicorn
 - **Front** — HTML/CSS/JS vanilla, servi par Flask
 - **Auth** — OAuth2 Spotify, sessions Flask
-- **BDD** — SQLite en dev, PostgreSQL (Supabase) en prod
+- **BDD** — SQLite en dev, PostgreSQL (Neon) en prod
 
 ---
 
@@ -111,15 +111,15 @@ Puis ouvre [http://127.0.0.1:5001](http://127.0.0.1:5001)
 
 ---
 
-## Déploiement (Render + Supabase)
+## Déploiement (Render + Neon)
 
-### Base de données Supabase
+### Base de données Neon
 
-1. Crée un projet sur [supabase.com](https://supabase.com)
-2. Applique le schéma initial (tables `tokens`, `history`, `playlist_prompts`) via **SQL Editor** ou les migrations
-3. Récupère la **connection string Transaction pooler** : Settings → Database → Transaction pooler
+1. Crée un projet sur [neon.tech](https://neon.tech)
+2. Applique le schéma initial (tables `tokens`, `history`, `playlist_prompts`) via le **SQL Editor** Neon ou les migrations
+3. Récupère la **connection string pooled** : Dashboard → Connect → Pooled connection
    ```
-   postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+   postgresql://USER:PASSWORD@ep-xxx-pooler.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require
    ```
 
 ### Render
@@ -135,7 +135,7 @@ Puis ouvre [http://127.0.0.1:5001](http://127.0.0.1:5001)
 | `SPOTIFY_REDIRECT` | `https://TON-APP.onrender.com/auth/callback` |
 | `GPT_KEY` | Clé API OpenAI |
 | `FRONTEND_URL` | `https://TON-APP.onrender.com` |
-| `DATABASE_URL` | Connection string Supabase (Transaction pooler) |
+| `DATABASE_URL` | Connection string Neon (pooled connection) |
 | `ALLOWED_USERS` | Spotify user IDs autorisés, séparés par des virgules |
 | `SECRET_KEY` | Généré automatiquement par Render |
 
@@ -158,7 +158,7 @@ Laisser vide = tout le monde peut se connecter (déconseillé en prod, ça conso
 ### Base de données
 
 En local (`DATABASE_URL` vide) → SQLite (`tokens.db` + `history.db` dans `api/`)
-En prod (`DATABASE_URL` défini) → PostgreSQL Supabase, les fichiers SQLite sont ignorés
+En prod (`DATABASE_URL` défini) → PostgreSQL Neon, les fichiers SQLite sont ignorés
 
 ---
 
