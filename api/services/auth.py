@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import secrets
 import sqlite3
 import time
 from datetime import datetime
@@ -30,9 +31,14 @@ def init_db():
                 user_id       TEXT PRIMARY KEY,
                 access_token  TEXT NOT NULL,
                 refresh_token TEXT NOT NULL,
-                expires_at    INTEGER NOT NULL
+                expires_at    INTEGER NOT NULL,
+                session_token TEXT
             )
         """)
+        try:
+            conn.execute("ALTER TABLE tokens ADD COLUMN session_token TEXT")
+        except sqlite3.OperationalError:
+            pass
     with db_conn(HISTORY_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS history (
@@ -255,3 +261,34 @@ def get_valid_token(user_id: str) -> Optional[str]:
         save_token(user_id, data)
         return data["access_token"]
     return row["access_token"]
+
+
+# ---------------------------------------------------------------------------
+# App session (bearer token — le cookie de session Flask ne survit pas sur
+# Safari en cross-site puisque front (Vercel) et API (Render) sont sur des
+# domaines différents ; l'ITP tue les cookies tiers).
+# ---------------------------------------------------------------------------
+
+def create_session_token(user_id: str) -> str:
+    """Génère un nouveau token à l'authentification — n'est PAS appelé lors
+    du refresh silencieux du token Spotify, sinon le front serait déconnecté
+    à chaque renouvellement."""
+    token = secrets.token_urlsafe(32)
+    with db_conn(DB_PATH) as conn:
+        conn.execute(f"UPDATE tokens SET session_token = {PH} WHERE user_id = {PH}", (token, user_id))
+    return token
+
+
+def get_user_id_by_session_token(token: str) -> Optional[str]:
+    if not token:
+        return None
+    with db_conn(DB_PATH) as conn:
+        row = conn.execute(
+            f"SELECT user_id FROM tokens WHERE session_token = {PH}", (token,)
+        ).fetchone()
+    return row["user_id"] if row else None
+
+
+def clear_session_token(user_id: str):
+    with db_conn(DB_PATH) as conn:
+        conn.execute(f"UPDATE tokens SET session_token = NULL WHERE user_id = {PH}", (user_id,))

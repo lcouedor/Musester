@@ -8,6 +8,30 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 }
 
+// ── Session token ────────────────────────────────────────────────────────
+// Pas de cookie : Safari (ITP) ne laisse pas vivre un cookie cross-site entre
+// le front (Vercel) et l'API (Render). Le token arrive dans le fragment d'URL
+// après le login et vit dans localStorage — première partie pour le front,
+// donc fiable.
+const TOKEN_KEY = 'musester_token'
+
+function captureTokenFromHash() {
+  const m = window.location.hash.match(/token=([^&]+)/)
+  if (!m) return
+  localStorage.setItem(TOKEN_KEY, decodeURIComponent(m[1]))
+  history.replaceState({}, '', window.location.pathname + window.location.search)
+}
+captureTokenFromHash()
+
+function getSessionToken() { return localStorage.getItem(TOKEN_KEY) }
+function setSessionToken(t) { localStorage.setItem(TOKEN_KEY, t) }
+function clearSessionToken() { localStorage.removeItem(TOKEN_KEY) }
+
+function authHeaders(extra = {}) {
+  const token = getSessionToken()
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
+}
+
 // ── Toasts ───────────────────────────────────────────────────────────────
 function toast(msg, type = 'ok') {
   const stack = document.getElementById('toast-stack')
@@ -30,15 +54,22 @@ function clearError(fieldId) { document.getElementById(fieldId).classList.remove
 
 // ── Auth ─────────────────────────────────────────────────────────────────
 async function checkAuth() {
+  if (!getSessionToken()) {
+    // Jamais connecté sur cet appareil — inutile d'appeler l'API, direct vers le login.
+    document.getElementById('view-loading').classList.add('hidden')
+    setDisconnected()
+    return
+  }
+
   const slowTimer = setTimeout(() => {
     const el = document.getElementById('loading-text')
     if (el) el.textContent = 'Le serveur se réveille, ça peut prendre jusqu\'à 50s…'
   }, 4000)
   try {
-    const res  = await fetch(`${API}/auth/me`, { credentials: 'include' })
+    const res  = await fetch(`${API}/auth/me`, { headers: authHeaders() })
     const data = await res.json()
     if (res.ok && data.data?.user_id) setConnected(data.data.user_id)
-    else setDisconnected()
+    else { clearSessionToken(); setDisconnected() }
   } catch { setDisconnected() }
   finally {
     clearTimeout(slowTimer)
@@ -66,7 +97,8 @@ function login() { window.location.href = `${API}/auth/login` }
 
 async function handleAccountTap() {
   if (!confirm('Se déconnecter de Musester ?')) return
-  await fetch(`${API}/auth/logout`, { credentials: 'include' })
+  await fetch(`${API}/auth/logout`, { headers: authHeaders() })
+  clearSessionToken()
   setDisconnected()
 }
 
@@ -82,8 +114,7 @@ function switchScreen(name) {
 function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onError }) {
   fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   }).then(async res => {
     if (!res.ok) {
@@ -263,7 +294,7 @@ async function onSourceBlur() {
   if (grid) grid.innerHTML = '<span class="muted-note">Chargement des morceaux…</span>'
 
   try {
-    const res  = await fetch(`${API}/source-tracks?source_id=${encodeURIComponent(source)}`, { credentials: 'include' })
+    const res  = await fetch(`${API}/source-tracks?source_id=${encodeURIComponent(source)}`, { headers: authHeaders() })
     const data = await res.json()
     if (!res.ok || !data.data?.length) {
       if (grid) grid.innerHTML = '<span class="muted-note">Aucun morceau trouvé</span>'
@@ -449,7 +480,7 @@ let _syncPickerOpen  = false
 async function ensureSyncPlaylists() {
   if (_syncPlaylists.length) return
   try {
-    const res  = await fetch(`${API}/playlists`, { credentials: 'include' })
+    const res  = await fetch(`${API}/playlists`, { headers: authHeaders() })
     const data = await res.json()
     _syncPlaylists = (data.data || []).map(p => ({ id: p.id, name: p.name }))
   } catch { _syncPlaylists = [] }
@@ -579,7 +610,7 @@ function sync() {
 async function loadPlaylists() {
   const container = document.getElementById('playlist-list')
   try {
-    const res  = await fetch(`${API}/playlists`, { credentials: 'include' })
+    const res  = await fetch(`${API}/playlists`, { headers: authHeaders() })
     const data = await res.json()
     if (!res.ok || !data.data?.length) {
       container.innerHTML = `
@@ -638,8 +669,7 @@ async function savePrompt(id) {
   if (!prompt) { document.getElementById(`pi-field-${id}`).classList.add('error'); return }
   try {
     const res = await fetch(`${API}/playlists/${id}/prompt`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
+      method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ prompt }),
     })
     if (res.ok) {
@@ -657,7 +687,7 @@ const HISTORY_LIMITS = [10, 20, 40, null] // null = tout
 
 async function loadHistory() {
   try {
-    const res  = await fetch(`${API}/history`, { credentials: 'include' })
+    const res  = await fetch(`${API}/history`, { headers: authHeaders() })
     const data = await res.json()
     _allHistory = (res.ok && data.data?.length) ? data.data : []
   } catch {
@@ -756,7 +786,7 @@ async function openDecisions(historyId, title, subtitle) {
   }
   body.innerHTML = '<span class="muted-note">Chargement…</span>'
   try {
-    const res  = await fetch(`${API}/history/${historyId}/decisions`, { credentials: 'include' })
+    const res  = await fetch(`${API}/history/${historyId}/decisions`, { headers: authHeaders() })
     const data = await res.json()
     if (!res.ok || !data.data?.length) {
       _sheetItems = []
@@ -786,7 +816,7 @@ async function openAnchors(playlistId, name, prompt) {
   if (_anchorsCache.has(playlistId)) { fill(_anchorsCache.get(playlistId)); return }
   body.innerHTML = '<span class="muted-note">Chargement…</span>'
   try {
-    const res  = await fetch(`${API}/playlists/${playlistId}/anchors`, { credentials: 'include' })
+    const res  = await fetch(`${API}/playlists/${playlistId}/anchors`, { headers: authHeaders() })
     const data = await res.json()
     if (!res.ok) { body.innerHTML = '<div class="empty-state"><span>Erreur de chargement</span></div>'; return }
     _anchorsCache.set(playlistId, data.data)

@@ -10,6 +10,7 @@ from flask import Blueprint, request, jsonify, redirect, session, Response, stre
 from core.playlist import generate_playlist_stream, generate_multi_playlist_stream, sync_all_playlists_stream
 from services.auth import (
     get_auth_url, exchange_code, save_token, get_valid_token,
+    create_session_token, get_user_id_by_session_token, clear_session_token,
     save_generate, save_sync, get_history, get_history_decisions,
     save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source,
 )
@@ -24,8 +25,17 @@ bp     = Blueprint("api", __name__)
 # Auth helpers
 # ---------------------------------------------------------------------------
 
+def _current_user_id() -> Optional[str]:
+    """Résout l'utilisateur via le bearer token envoyé par le front (pas de
+    cookie — cross-site + Safari ITP ne le laisseraient pas survivre)."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    return get_user_id_by_session_token(auth_header.removeprefix("Bearer ").strip())
+
+
 def _get_token() -> Optional[str]:
-    user_id = session.get("user_id")
+    user_id = _current_user_id()
     if not user_id:
         return None
     return get_valid_token(user_id)
@@ -101,21 +111,25 @@ def callback():
         return redirect(f"{config.FRONTEND_URL}?error=unauthorized")
 
     save_token(user_id, token_data)
-    session["user_id"] = user_id
+    session_token = create_session_token(user_id)
 
     logger.info("User '%s' authenticated", user_id)
-    return redirect(config.FRONTEND_URL)
+    # Le token part dans le fragment (#) : jamais envoyé au serveur / logs,
+    # le front le récupère côté client et le stocke dans localStorage.
+    return redirect(f"{config.FRONTEND_URL}#token={session_token}")
 
 
 @bp.route("/auth/logout")
 def logout():
-    session.clear()
+    user_id = _current_user_id()
+    if user_id:
+        clear_session_token(user_id)
     return jsonify({"error": None, "data": {"message": "Logged out"}})
 
 
 @bp.route("/auth/me")
 def me():
-    user_id = session.get("user_id")
+    user_id = _current_user_id()
     if not user_id:
         return _err("Not authenticated", 401)
     return jsonify({"error": None, "data": {"user_id": user_id}})

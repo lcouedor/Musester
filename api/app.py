@@ -22,11 +22,14 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder=FRONTEND_DIR)
     app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
     is_prod = bool(os.getenv('RENDER') or os.getenv('FLASK_ENV') == 'production')
-    # SameSite=None est nécessaire car le front (Vercel) et l'API (Render) sont sur des domaines différents.
-    app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_prod else 'Lax'
+    # Ce cookie ne sert plus qu'à `oauth_state` pendant le hand-off OAuth (Render <-> Spotify),
+    # toujours en navigation top-level donc jamais cross-site : Lax suffit.
+    # L'auth API elle-même passe par un bearer token (voir services/auth.py) — un cookie de
+    # session classique ne survivrait pas sur Safari (ITP tue les cookies tiers cross-site).
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE']   = is_prod
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    CORS(app, origins=[config.FRONTEND_URL], supports_credentials=True)
+    CORS(app, origins=[config.FRONTEND_URL], allow_headers=["Content-Type", "Authorization"])
     app.register_blueprint(bp)
     init_db()
 
