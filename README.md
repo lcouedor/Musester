@@ -16,9 +16,9 @@ La classification est assurée par GPT-4.1.
 
 ## Stack
 
-- **Back** — Python / Flask, Spotipy, OpenAI SDK, gunicorn
-- **Front** — HTML/CSS/JS vanilla, servi par Flask
-- **Auth** — OAuth2 Spotify, sessions Flask
+- **Back** — Python / Flask, Spotipy, OpenAI SDK, gunicorn — hébergé sur Render
+- **Front** — HTML/CSS/JS vanilla — servi par Flask en dev, hébergé sur Vercel en prod
+- **Auth** — OAuth2 Spotify, sessions Flask (cookie cross-site en prod)
 - **BDD** — SQLite en dev, PostgreSQL (Neon) en prod
 
 ---
@@ -111,7 +111,9 @@ Puis ouvre [http://127.0.0.1:5001](http://127.0.0.1:5001)
 
 ---
 
-## Déploiement (Render + Neon)
+## Déploiement (Render + Vercel + Neon)
+
+Le back (API) tourne sur Render, le front (statique) sur Vercel — deux domaines distincts, d'où la config CORS / cookie cross-site ci-dessous.
 
 ### Base de données Neon
 
@@ -122,7 +124,7 @@ Puis ouvre [http://127.0.0.1:5001](http://127.0.0.1:5001)
    postgresql://USER:PASSWORD@ep-xxx-pooler.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require
    ```
 
-### Render
+### Backend — Render
 
 1. Crée un **Web Service** sur [render.com](https://render.com), connecte le repo GitHub — Render détecte le `render.yaml` automatiquement
 2. Configure les variables d'environnement :
@@ -132,17 +134,24 @@ Puis ouvre [http://127.0.0.1:5001](http://127.0.0.1:5001)
 | `SPOTIFY_ID` | Client ID de ton app Spotify |
 | `SPOTIFY_SECRET` | Client Secret de ton app Spotify |
 | `SPOTIFY_USERNAME` | Ton username Spotify |
-| `SPOTIFY_REDIRECT` | `https://TON-APP.onrender.com/auth/callback` |
+| `SPOTIFY_REDIRECT` | `https://TON-API.onrender.com/auth/callback` (le backend Render — Spotify redirige ici, pas vers le front) |
 | `GPT_KEY` | Clé API OpenAI |
-| `FRONTEND_URL` | `https://TON-APP.onrender.com` |
+| `FRONTEND_URL` | URL du front Vercel, ex. `https://musester.vercel.app` — sert à la fois de redirection post-login et d'origine CORS autorisée |
 | `DATABASE_URL` | Connection string Neon (pooled connection) |
 | `ALLOWED_USERS` | Spotify user IDs autorisés, séparés par des virgules |
 | `SECRET_KEY` | Généré automatiquement par Render |
 
 3. Ajoute l'URI de callback dans le dashboard Spotify Developer :
    ```
-   https://TON-APP.onrender.com/auth/callback
+   https://TON-API.onrender.com/auth/callback
    ```
+
+### Frontend — Vercel
+
+1. Importe le repo GitHub sur [vercel.com/new](https://vercel.com/new)
+2. **Root Directory** : `web` — **Framework Preset** : `Other` (site statique, pas de build command)
+3. Déploie — le domaine stable du projet (ex. `musester.vercel.app`, pas l'URL de déploiement à hash aléatoire) est celui à renseigner dans `FRONTEND_URL` sur Render
+4. Dans `web/index.html`, la constante `API` pointe vers l'URL Render en prod et bascule en relatif (`''`) en local/dev — à adapter si le domaine Render change
 
 ### Whitelist (`ALLOWED_USERS`)
 
