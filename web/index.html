@@ -205,8 +205,8 @@
 
   <div class="toast-stack" id="toast-stack"></div>
 
-  <!-- Decisions drawer -->
-  <div class="sheet-overlay" id="decisions-overlay" onclick="if(event.target===this) closeDecisions()">
+  <!-- Bottom sheet (décisions / ancres) -->
+  <div class="sheet-overlay" id="decisions-overlay" onclick="if(event.target===this) closeSheet()">
     <div class="sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-head">
@@ -214,12 +214,12 @@
           <h2 id="decisions-title">—</h2>
           <p class="helper-text" id="decisions-subtitle" style="margin-top:2px"></p>
         </div>
-        <button class="icon-btn" onclick="closeDecisions()" title="Fermer">
+        <button class="icon-btn" onclick="closeSheet()" title="Fermer">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
       <div class="sheet-search">
-        <input type="text" id="decisions-search" placeholder="Rechercher un morceau…" oninput="filterDecisions(this.value)" />
+        <input type="text" id="decisions-search" placeholder="Rechercher un morceau…" oninput="filterSheet(this.value)" />
       </div>
       <div class="sheet-body" id="decisions-body"></div>
     </div>

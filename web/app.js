@@ -589,11 +589,14 @@ async function loadPlaylists() {
         </div>`
       return
     }
-    container.innerHTML = data.data.map(p => `
-      <div class="playlist-item">
+    container.innerHTML = ''
+    data.data.forEach(p => {
+      const el = document.createElement('div')
+      el.className = 'playlist-item clickable'
+      el.innerHTML = `
         <div class="pi-row">
-          <span class="pi-name">IA-${esc(p.name)}</span>
-          <button class="icon-btn" onclick="toggleEditPrompt('${p.id}')" title="Modifier le prompt">
+          <span class="pi-name">${esc(p.name)}</span>
+          <button class="icon-btn" title="Modifier le prompt">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
         </div>
@@ -609,11 +612,17 @@ async function loadPlaylists() {
             <span class="field-error">Le prompt ne peut pas être vide</span>
           </div>
           <div class="btn-row">
-            <button class="btn btn-primary btn-inline" onclick="savePrompt('${p.id}')">Sauvegarder</button>
-            <button class="btn btn-secondary btn-inline" onclick="toggleEditPrompt('${p.id}')">Annuler</button>
+            <button class="btn btn-primary btn-inline" data-action="save">Sauvegarder</button>
+            <button class="btn btn-secondary btn-inline" data-action="cancel">Annuler</button>
           </div>
-        </div>
-      </div>`).join('')
+        </div>`
+      el.querySelector('.icon-btn').addEventListener('click', e => { e.stopPropagation(); toggleEditPrompt(p.id) })
+      el.querySelector('[data-action="save"]').addEventListener('click', e => { e.stopPropagation(); savePrompt(p.id) })
+      el.querySelector('[data-action="cancel"]').addEventListener('click', e => { e.stopPropagation(); toggleEditPrompt(p.id) })
+      el.querySelector('.pi-edit').addEventListener('click', e => e.stopPropagation())
+      el.addEventListener('click', () => openAnchors(p.id, p.name, p.prompt))
+      container.appendChild(el)
+    })
   } catch {
     container.innerHTML = '<span class="muted-note">Erreur de chargement</span>'
   }
@@ -713,67 +722,138 @@ function setHistoryLimit(n) {
   renderHistory()
 }
 
-// ── Decisions drawer ─────────────────────────────────────────────────────
+// ── Bottom sheet (decisions & anchors) ──────────────────────────────────
 const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
 const ICON_X     = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'
 
-let _decisionsCache = new Map() // history_id -> decisions[]
-let _currentDecisions = []
+let _sheetMode  = 'decisions' // 'decisions' | 'anchors'
+let _sheetItems = []
+const _decisionsCache = new Map() // history_id -> decisions[]
+const _anchorsCache   = new Map() // playlist_id -> { anchors, source_id }
 
-async function openDecisions(historyId, title, subtitle) {
+function openSheet(title, subtitle) {
   document.getElementById('decisions-title').textContent = title
   document.getElementById('decisions-subtitle').textContent = subtitle || ''
   document.getElementById('decisions-search').value = ''
   document.getElementById('decisions-overlay').classList.add('open')
+  document.querySelector('.screens')?.classList.add('locked')
+}
 
+function closeSheet() {
+  document.getElementById('decisions-overlay').classList.remove('open')
+  document.querySelector('.screens')?.classList.remove('locked')
+}
+
+async function openDecisions(historyId, title, subtitle) {
+  _sheetMode = 'decisions'
+  openSheet(title, subtitle)
   const body = document.getElementById('decisions-body')
+
   if (_decisionsCache.has(historyId)) {
-    _currentDecisions = _decisionsCache.get(historyId)
-    renderDecisions(_currentDecisions)
+    _sheetItems = _decisionsCache.get(historyId)
+    renderSheetBody(_sheetItems)
     return
   }
-
   body.innerHTML = '<span class="muted-note">Chargement…</span>'
   try {
     const res  = await fetch(`${API}/history/${historyId}/decisions`, { credentials: 'include' })
     const data = await res.json()
     if (!res.ok || !data.data?.length) {
-      _currentDecisions = []
+      _sheetItems = []
       body.innerHTML = '<div class="empty-state"><span>Aucun détail enregistré pour cette génération.</span></div>'
       return
     }
-    _currentDecisions = data.data
-    _decisionsCache.set(historyId, _currentDecisions)
-    renderDecisions(_currentDecisions)
+    _sheetItems = data.data
+    _decisionsCache.set(historyId, _sheetItems)
+    renderSheetBody(_sheetItems)
   } catch {
     body.innerHTML = '<div class="empty-state"><span>Erreur de chargement</span></div>'
   }
 }
 
-function renderDecisions(list) {
+async function openAnchors(playlistId, name, prompt) {
+  _sheetMode = 'anchors'
+  openSheet(name, prompt || '')
+  const body = document.getElementById('decisions-body')
+
+  const fill = ({ anchors, source_id }) => {
+    _sheetItems = anchors || []
+    const label = source_id === 'liked' ? 'Titres likés' : (source_id ? 'Playlist source' : null)
+    document.getElementById('decisions-subtitle').textContent = [prompt, label].filter(Boolean).join(' · ')
+    renderSheetBody(_sheetItems)
+  }
+
+  if (_anchorsCache.has(playlistId)) { fill(_anchorsCache.get(playlistId)); return }
+  body.innerHTML = '<span class="muted-note">Chargement…</span>'
+  try {
+    const res  = await fetch(`${API}/playlists/${playlistId}/anchors`, { credentials: 'include' })
+    const data = await res.json()
+    if (!res.ok) { body.innerHTML = '<div class="empty-state"><span>Erreur de chargement</span></div>'; return }
+    _anchorsCache.set(playlistId, data.data)
+    fill(data.data)
+  } catch {
+    body.innerHTML = '<div class="empty-state"><span>Erreur de chargement</span></div>'
+  }
+}
+
+function renderSheetBody(list) {
   const body = document.getElementById('decisions-body')
   if (!list.length) {
-    body.innerHTML = '<div class="empty-state"><span>Aucun résultat</span></div>'
+    body.innerHTML = _sheetMode === 'anchors'
+      ? '<div class="empty-state"><span>Aucune ancre n\'a été utilisée pour cette playlist.</span></div>'
+      : '<div class="empty-state"><span>Aucun résultat</span></div>'
     return
   }
-  body.innerHTML = list.map(d => `
-    <div class="decision-row ${d.include ? 'include' : 'exclude'}">
-      <span class="d-mark">${d.include ? ICON_CHECK : ICON_X}</span>
-      <div class="d-body">
-        <div class="d-title">${esc(d.title)}</div>
-        <div class="d-reason">${esc(d.reason || '')}</div>
-      </div>
-    </div>`).join('')
+  body.innerHTML = _sheetMode === 'anchors'
+    ? list.map(t => `
+        <div class="decision-row">
+          <div class="d-body">
+            <div class="d-title">${esc(t.title)}</div>
+            <div class="d-reason">${esc(t.artists || '')}</div>
+          </div>
+        </div>`).join('')
+    : list.map(d => `
+        <div class="decision-row ${d.include ? 'include' : 'exclude'}">
+          <span class="d-mark">${d.include ? ICON_CHECK : ICON_X}</span>
+          <div class="d-body">
+            <div class="d-title">${esc(d.title)}</div>
+            <div class="d-reason">${esc(d.reason || '')}</div>
+          </div>
+        </div>`).join('')
 }
 
-function filterDecisions(query) {
+function filterSheet(query) {
   const q = query.trim().toLowerCase()
-  renderDecisions(q ? _currentDecisions.filter(d => d.title.toLowerCase().includes(q)) : _currentDecisions)
+  renderSheetBody(q ? _sheetItems.filter(d => d.title.toLowerCase().includes(q)) : _sheetItems)
 }
 
-function closeDecisions() {
-  document.getElementById('decisions-overlay').classList.remove('open')
-}
+// Drag-to-dismiss (grab handle or header)
+;(function setupSheetDrag() {
+  const sheet = document.querySelector('.sheet')
+  const grips = document.querySelectorAll('.sheet-handle, .sheet-head')
+  if (!sheet || !grips.length) return
+  let startY = 0, dy = 0, dragging = false
+
+  grips.forEach(grip => {
+    grip.addEventListener('touchstart', e => {
+      dragging = true; startY = e.touches[0].clientY; dy = 0
+      sheet.style.transition = 'none'
+    }, { passive: true })
+
+    grip.addEventListener('touchmove', e => {
+      if (!dragging) return
+      dy = Math.max(0, e.touches[0].clientY - startY)
+      sheet.style.transform = `translate(-50%, ${dy}px)`
+    }, { passive: true })
+
+    grip.addEventListener('touchend', () => {
+      dragging = false
+      sheet.style.transition = ''
+      sheet.style.transform = ''
+      if (dy > 90) closeSheet()
+    })
+  })
+})()
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 function formatDate(iso) {

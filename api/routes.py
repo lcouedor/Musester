@@ -11,7 +11,7 @@ from core.playlist import generate_playlist_stream, generate_multi_playlist_stre
 from services.auth import (
     get_auth_url, exchange_code, save_token, get_valid_token,
     save_generate, save_sync, get_history, get_history_decisions,
-    save_playlist_prompt, get_playlist_prompt,
+    save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source,
 )
 from services.spotify import SpotifyService
 import config
@@ -286,6 +286,15 @@ def playlists(access_token: str):
         })
 
     return _ok(result)
+
+
+@bp.route("/playlists/<playlist_id>/anchors", methods=["GET"])
+@require_auth
+def playlist_anchors(access_token: str, playlist_id: str):
+    return _ok({
+        "anchors":   get_playlist_anchors(playlist_id),
+        "source_id": get_playlist_source(playlist_id),
+    })
 
 
 @bp.route("/playlists/<playlist_id>/prompt", methods=["PUT"])
