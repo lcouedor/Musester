@@ -80,6 +80,7 @@ async function checkAuth() {
 function setConnected(userId) {
   document.getElementById('view-login').classList.add('hidden')
   document.getElementById('app').classList.remove('hidden')
+  document.getElementById('bottom-nav').classList.remove('hidden')
   document.getElementById('account-label').textContent = userId
   renderTabs()
   renderActivePanel()
@@ -90,6 +91,7 @@ function setConnected(userId) {
 
 function setDisconnected() {
   document.getElementById('app').classList.add('hidden')
+  document.getElementById('bottom-nav').classList.add('hidden')
   document.getElementById('view-login').classList.remove('hidden')
 }
 
