@@ -4,6 +4,8 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Generator
 
+from spotipy.exceptions import SpotifyException
+
 from core.models import Track, Decision
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PASS2
@@ -19,6 +21,13 @@ def _event(kind: str, **data) -> str:
 
 def _filter(decisions: list) -> list:
     return [d.id for d in decisions if d.include]
+
+
+def _source_error_message(source_id: str, exc: Exception) -> str:
+    if isinstance(exc, SpotifyException) and exc.http_status in (400, 404):
+        return f"Playlist source introuvable : « {source_id} ». Vérifie l'URL, ou tape « liked » pour tes titres likés."
+    logger.exception("Failed to fetch source tracks for '%s'", source_id)
+    return f"Impossible de récupérer la playlist source « {source_id} »."
 
 
 def _resolve_anchors(anchors_raw: list[dict], track_map: dict) -> list[Track]:
@@ -68,7 +77,11 @@ def generate_playlist_stream(
 
     spotify   = SpotifyService(access_token)
     yield _event("status", message="Récupération des morceaux…")
-    tracks    = spotify.get_tracks(source_id)
+    try:
+        tracks = spotify.get_tracks(source_id)
+    except Exception as e:
+        yield _event("error", message=_source_error_message(source_id, e))
+        return
     track_map = {t.id: t for t in tracks}
 
     anchor_tracks = _resolve_anchors(anchors, track_map)
@@ -195,7 +208,11 @@ def generate_multi_playlist_stream(
 
     spotify   = SpotifyService(access_token)
     yield _event("status", message="Récupération des morceaux…")
-    tracks    = spotify.get_tracks(source_id)
+    try:
+        tracks = spotify.get_tracks(source_id)
+    except Exception as e:
+        yield _event("error", message=_source_error_message(source_id, e))
+        return
     track_map = {t.id: t for t in tracks}
 
     playlists_spec = []
@@ -323,7 +340,11 @@ def sync_all_playlists_stream(
     spotify = SpotifyService(access_token)
 
     yield _event("status", message="Récupération de la playlist source…")
-    source_tracks = spotify.get_tracks(source_id, extended=True)
+    try:
+        source_tracks = spotify.get_tracks(source_id, extended=True)
+    except Exception as e:
+        yield _event("error", message=_source_error_message(source_id, e))
+        return
     source_ids    = {t.id for t in source_tracks}
     source_name   = spotify.get_playlist_name(source_id)
 
@@ -354,95 +375,102 @@ def sync_all_playlists_stream(
         else:
             yield _event("status", message=f"[{i+1}/{total}] {name} — recherche des nouveaux morceaux…")
 
-        target_tracks = spotify.get_tracks(pid, extended=True)
-        existing_ids  = {t.id for t in target_tracks}
-
-        if destructive:
-            to_remove = [t.id for t in target_tracks if t.id not in source_ids]
-            if to_remove:
-                spotify.remove_from_playlist(pid, to_remove)
-        else:
-            to_remove = []
-
-        # Calcul sûr de last_added — certains morceaux Spotify ont added_at = None
-        if target_tracks:
-            valid_dates = [t.added_at for t in target_tracks if t.added_at]
-            last_added  = max(valid_dates) if valid_dates else None
-        else:
-            last_added = spotify.get_playlist_created_at(pid)
-
         added     = 0
         checked   = 0
+        to_remove = []
 
-        if not last_added:
-            logger.warning("No reference date for '%s', skipping update step", name)
-            results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0, "reason": "no reference date"}
-        else:
-            # Filtre défensif : ignorer les morceaux source sans date
-            new_tracks = [
-                t for t in source_tracks
-                if t.added_at and t.added_at > last_added and t.id not in existing_ids
-            ]
-            checked = len(new_tracks)
+        # Une erreur sur une playlist (ex: supprimée de Spotify depuis) ne doit pas
+        # faire mourir tout le flux — sinon aucun résultat n'est jamais persisté,
+        # même pour les playlists déjà traitées avec succès.
+        try:
+            target_tracks = spotify.get_tracks(pid, extended=True)
+            existing_ids  = {t.id for t in target_tracks}
 
-            yield _event("status", message=(
-                f"[{i+1}/{total}] {name} — "
-                f"{checked} nouveau(x) morceau(x) détecté(s) depuis le dernier sync"
-            ))
+            if destructive:
+                to_remove = [t.id for t in target_tracks if t.id not in source_ids]
+                if to_remove:
+                    spotify.remove_from_playlist(pid, to_remove)
 
-            if new_tracks:
-                prompt = get_playlist_prompt(pid)
-                if not prompt:
-                    logger.warning("No prompt in DB for '%s', skipping", name)
-                    results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": checked, "reason": "no prompt in DB"}
-                else:
-                    raw_anchors  = get_playlist_anchors(pid)
-                    sync_anchors = [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
-                                    for a in raw_anchors] or None
-                    total_b = -(-len(new_tracks) // _cfg.BATCH_SIZE)
-                    batches = [new_tracks[j:j+_cfg.BATCH_SIZE] for j in range(0, len(new_tracks), _cfg.BATCH_SIZE)]
-
-                    yield _event("status", message=f"[{i+1}/{total}] {name} — {total_b} batch(s) en cours…")
-
-                    raw_sync: dict[int, list] = {}
-                    with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-                        futs = {ex.submit(_classifier._process_batch, prompt, b, j, total_b, None, sync_anchors): j
-                                for j, b in enumerate(batches)}
-                        for fut in as_completed(futs):
-                            raw_sync[futs[fut]] = fut.result()
-
-                    all_decisions: list[Decision] = []
-                    for j in sorted(raw_sync):
-                        for d in raw_sync[j]:
-                            try:
-                                all_decisions.append(Decision(**d))
-                            except (TypeError, ValueError):
-                                pass
-
-                    log_entries.append({
-                        "name":      name,
-                        "prompt":    prompt,
-                        "anchors":   [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
-                                      for a in raw_anchors] if raw_anchors else [],
-                        "decisions": all_decisions,
-                    })
-
-                    selected = _filter(all_decisions)
-                    if selected:
-                        spotify.add_to_playlist(pid, selected)
-                        if not destructive:
-                            from datetime import datetime
-                            original_source = get_playlist_source(pid)
-                            date_str        = datetime.now().strftime("%d/%m/%Y")
-                            if original_source and original_source != source_id:
-                                note = f"[Sync additif depuis \"{source_name}\" (source différente de l'originale) — {date_str}] "
-                            else:
-                                note = f"[Sync additif depuis \"{source_name}\" — {date_str}] "
-                            spotify.prepend_playlist_description(pid, note)
-                    added     = len(selected)
-                    results[pid] = {"name": name, "removed": len(to_remove), "added": added, "checked": checked}
+            # Calcul sûr de last_added — certains morceaux Spotify ont added_at = None
+            if target_tracks:
+                valid_dates = [t.added_at for t in target_tracks if t.added_at]
+                last_added  = max(valid_dates) if valid_dates else None
             else:
-                results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0}
+                last_added = spotify.get_playlist_created_at(pid)
+
+            if not last_added:
+                logger.warning("No reference date for '%s', skipping update step", name)
+                results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0, "reason": "no reference date"}
+            else:
+                # Filtre défensif : ignorer les morceaux source sans date
+                new_tracks = [
+                    t for t in source_tracks
+                    if t.added_at and t.added_at > last_added and t.id not in existing_ids
+                ]
+                checked = len(new_tracks)
+
+                yield _event("status", message=(
+                    f"[{i+1}/{total}] {name} — "
+                    f"{checked} nouveau(x) morceau(x) détecté(s) depuis le dernier sync"
+                ))
+
+                if new_tracks:
+                    prompt = get_playlist_prompt(pid)
+                    if not prompt:
+                        logger.warning("No prompt in DB for '%s', skipping", name)
+                        results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": checked, "reason": "no prompt in DB"}
+                    else:
+                        raw_anchors  = get_playlist_anchors(pid)
+                        sync_anchors = [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
+                                        for a in raw_anchors] or None
+                        total_b = -(-len(new_tracks) // _cfg.BATCH_SIZE)
+                        batches = [new_tracks[j:j+_cfg.BATCH_SIZE] for j in range(0, len(new_tracks), _cfg.BATCH_SIZE)]
+
+                        yield _event("status", message=f"[{i+1}/{total}] {name} — {total_b} batch(s) en cours…")
+
+                        raw_sync: dict[int, list] = {}
+                        with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+                            futs = {ex.submit(_classifier._process_batch, prompt, b, j, total_b, None, sync_anchors): j
+                                    for j, b in enumerate(batches)}
+                            for fut in as_completed(futs):
+                                raw_sync[futs[fut]] = fut.result()
+
+                        all_decisions: list[Decision] = []
+                        for j in sorted(raw_sync):
+                            for d in raw_sync[j]:
+                                try:
+                                    all_decisions.append(Decision(**d))
+                                except (TypeError, ValueError):
+                                    pass
+
+                        log_entries.append({
+                            "name":      name,
+                            "prompt":    prompt,
+                            "anchors":   [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
+                                          for a in raw_anchors] if raw_anchors else [],
+                            "decisions": all_decisions,
+                        })
+
+                        selected = _filter(all_decisions)
+                        if selected:
+                            spotify.add_to_playlist(pid, selected)
+                            if not destructive:
+                                from datetime import datetime
+                                original_source = get_playlist_source(pid)
+                                date_str        = datetime.now().strftime("%d/%m/%Y")
+                                if original_source and original_source != source_id:
+                                    note = f"[Sync additif depuis \"{source_name}\" (source différente de l'originale) — {date_str}] "
+                                else:
+                                    note = f"[Sync additif depuis \"{source_name}\" — {date_str}] "
+                                spotify.prepend_playlist_description(pid, note)
+                        added     = len(selected)
+                        results[pid] = {"name": name, "removed": len(to_remove), "added": added, "checked": checked}
+                else:
+                    results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0}
+        except Exception:
+            logger.exception("Sync failed for playlist '%s' (%s)", name, pid)
+            results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0, "reason": "error"}
+            yield _event("status", message=f"[{i+1}/{total}] {name} — erreur, playlist ignorée")
 
         yield _event("playlist_done", name=name, removed=len(to_remove), added=added, checked=checked)
         yield _event("progress", done=i + 1, total=total)

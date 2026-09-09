@@ -6,7 +6,7 @@
 
 :root {
   --bg:          #0b0f0c;
-  --bg-elevated: #0e1310e0;
+  --bg-elevated: #171c18;
   --surface:     #171c18;
   --surface-2:   #1d231e;
   --border:      #262d27;
@@ -62,7 +62,7 @@ button { cursor: pointer; }
   flex-shrink: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
   padding: calc(14px + env(safe-area-inset-top)) 20px 14px;
-  background: var(--bg-elevated); backdrop-filter: blur(10px);
+  background: var(--bg-elevated);
 }
 .topbar .wordmark {
   font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: -0.01em;
@@ -95,13 +95,13 @@ button { cursor: pointer; }
 .bottom-nav {
   flex-shrink: 0;
   display: flex; z-index: 20;
-  background: var(--bg-elevated); backdrop-filter: blur(14px);
+  background: var(--bg-elevated);
   border-top: 1px solid var(--border-soft);
   padding: 10px 12px calc(10px + var(--safe-b));
 }
 .nav-btn {
   flex: 1; background: none; border: none;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   padding: 6px 4px; color: var(--muted-2);
   font-family: var(--font-body); font-size: 11px; font-weight: 500;
   transition: color .15s;
@@ -477,6 +477,13 @@ button { cursor: pointer; }
 .decision-row .d-body { min-width: 0; flex: 1; }
 .decision-row .d-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .decision-row .d-reason { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.sheet-banner {
+  font-size: 12.5px; color: var(--muted); line-height: 1.5;
+  background: var(--accent-soft); border: 1px solid var(--accent-dim);
+  border-radius: var(--radius-sm); padding: 9px 11px; margin-bottom: 4px;
+}
+.sheet-banner strong { color: var(--text); }
 
 /* ── Misc ──────────────────────────────────────────────────────────────── */
 

@@ -73,8 +73,8 @@ def _err(message: str, status: int = 400) -> tuple:
 # ---------------------------------------------------------------------------
 
 def _parse_id(raw: str) -> str:
-    if raw == "liked":
-        return raw
+    if raw.strip().lower() == "liked":
+        return "liked"
     try:
         return raw.split("playlist/")[1].split("?")[0]
     except (IndexError, AttributeError):
@@ -266,7 +266,11 @@ def source_tracks(access_token: str):
         return _err("Missing required parameter: source_id")
 
     spotify = SpotifyService(access_token)
-    tracks  = spotify.get_tracks(_parse_id(source_id))
+    try:
+        tracks = spotify.get_tracks(_parse_id(source_id))
+    except Exception:
+        logger.exception("Failed to fetch source tracks for '%s'", source_id)
+        return _err(f"Playlist source introuvable : « {source_id} ». Vérifie l'URL, ou tape « liked » pour tes titres likés.", 404)
     return _ok([{
         "id":        t.id,
         "title":     t.title,

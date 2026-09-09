@@ -190,6 +190,7 @@ function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onErr
           if (event.kind === 'progress'      && onProgress)     onProgress(event.done, event.total, event.phase)
           if (event.kind === 'playlist_done' && onPlaylistDone) onPlaylistDone(event)
           if (event.kind === 'done'          && onDone)         onDone(event)
+          if (event.kind === 'error')                           onError(event.message || 'Erreur inconnue')
         } catch {}
       }
     }
@@ -876,16 +877,18 @@ async function openAnchors(playlistId, name, prompt) {
   }
 }
 
+const ANCHORS_BANNER = `<div class="sheet-banner">Morceaux donnés en <strong>référence</strong> à GPT pour créer cette playlist — pas la liste complète de ses titres.</div>`
+
 function renderSheetBody(list) {
   const body = document.getElementById('decisions-body')
   if (!list.length) {
     body.innerHTML = _sheetMode === 'anchors'
-      ? '<div class="empty-state"><span>Aucune ancre n\'a été utilisée pour cette playlist.</span></div>'
+      ? ANCHORS_BANNER + '<div class="empty-state"><span>Aucune ancre n\'a été utilisée pour cette playlist.</span></div>'
       : '<div class="empty-state"><span>Aucun résultat</span></div>'
     return
   }
   body.innerHTML = _sheetMode === 'anchors'
-    ? list.map(t => `
+    ? ANCHORS_BANNER + list.map(t => `
         <div class="decision-row">
           <div class="d-body">
             <div class="d-title">${esc(t.title)}</div>
