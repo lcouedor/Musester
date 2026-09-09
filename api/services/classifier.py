@@ -111,6 +111,7 @@ class ClassifierService:
         total: int,
         preprompt: str = None,
         anchors: list[Track] = None,
+        languages: dict[str, str] = None,
     ) -> list[dict]:
         if preprompt is None:
             preprompt = PREPROMPT
@@ -129,9 +130,16 @@ class ClassifierService:
                 "Judge on shared mood, energy, tempo and style — not just the description above.\n"
             )
 
+        if languages:
+            prompt += (
+                "\nSome songs include a detected sung language (from actual lyrics, not the artist's "
+                "nationality) — trust it over any assumption.\n"
+            )
+
         prompt += "\nSongs to evaluate:\n"
         prompt += "\n".join(
             f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
+            + (f", Detected sung language: {languages[t.id]}" if languages and languages.get(t.id) else "")
             for t in batch
         )
 

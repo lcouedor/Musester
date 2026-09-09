@@ -7,6 +7,7 @@ import config
 from core.models import Track
 from services.embeddings import embed_texts, cosine_similarity, centroid
 from services.lastfm import get_track_tags
+from services.lyrics import get_lyrics, detect_language
 
 logger = logging.getLogger(__name__)
 _client = OpenAI(api_key=config.GPT_KEY)
@@ -33,10 +34,35 @@ def translate_to_english(text: str) -> str:
 
 def _track_profile_text(track: Track) -> str:
     primary_artist = track.artists.split('-')[0].strip()
-    tags = get_track_tags(primary_artist, track.title)
-    if not tags:
+    tags   = get_track_tags(primary_artist, track.title)
+    lyrics = get_lyrics(primary_artist, track.title)
+
+    if not tags and not lyrics:
         return ""
-    return f"{track.title} by {primary_artist}. Tags: {', '.join(tags)}"
+
+    parts = [f"{track.title} by {primary_artist}."]
+    if tags:
+        parts.append(f"Tags: {', '.join(tags)}.")
+    if lyrics:
+        # Extrait, pas le texte complet — suffisant pour capter le thème, pas
+        # besoin de plus pour un vecteur d'embedding.
+        parts.append(f"Lyrics excerpt: {lyrics[:400].strip()}")
+    return " ".join(parts)
+
+
+def fetch_languages(tracks: list[Track]) -> dict[str, str]:
+    """Langue réellement chantée (détectée depuis les paroles), par morceau —
+    un fait pour GPT plutôt qu'une supposition depuis la nationalité de
+    l'artiste (bug constaté : un artiste polonais chantant en anglais classé
+    comme "polonais"). Absent du dict si paroles introuvables/indétectables."""
+    def _one(track: Track) -> tuple[str, str | None]:
+        primary_artist = track.artists.split('-')[0].strip()
+        lyrics = get_lyrics(primary_artist, track.title)
+        return track.id, detect_language(lyrics) if lyrics else None
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(_one, tracks))
+    return {tid: lang for tid, lang in results if lang}
 
 
 class ScoringResult:

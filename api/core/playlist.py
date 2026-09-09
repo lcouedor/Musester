@@ -7,7 +7,7 @@ from typing import Generator
 from spotipy.exceptions import SpotifyException
 
 from core.models import Track, Decision
-from core.scoring import score_against_anchors
+from core.scoring import score_against_anchors, fetch_languages
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PASS2
 from services.auth import save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source
@@ -155,6 +155,9 @@ def generate_playlist_stream(
 
         # --- Pass 2 : selective filter ---
         if candidates:
+            yield _event("status", message="Détection de la langue chantée…")
+            languages = fetch_languages(candidates)
+
             pass2_batches = [candidates[i:i+_cfg.BATCH_SIZE] for i in range(0, len(candidates), _cfg.BATCH_SIZE)]
             total_p2      = len(pass2_batches)
 
@@ -164,7 +167,7 @@ def generate_playlist_stream(
             raw_p2: dict[int, list] = {}
             anch = anchor_tracks or None
             with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anch): i
+                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anch, languages): i
                         for i, b in enumerate(pass2_batches)}
                 done = 0
                 for fut in as_completed(futs):
@@ -184,6 +187,10 @@ def generate_playlist_stream(
     else:
         # --- Single pass (pré-filtré par similarité si des ancres sont fournies) ---
         working = embedding_approved + pass1_pool if anchor_tracks else tracks
+
+        yield _event("status", message="Détection de la langue chantée…")
+        languages = fetch_languages(working)
+
         batches = [working[i:i+_cfg.BATCH_SIZE] for i in range(0, len(working), _cfg.BATCH_SIZE)]
         total_b = len(batches)
 
@@ -193,7 +200,7 @@ def generate_playlist_stream(
         anch    = anchor_tracks or None
         raw_sp: dict[int, list] = {}
         with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-            futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anch): i
+            futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anch, languages): i
                     for i, b in enumerate(batches)}
             done = 0
             for fut in as_completed(futs):
