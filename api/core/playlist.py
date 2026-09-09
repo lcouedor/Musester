@@ -101,6 +101,18 @@ def generate_playlist_stream(
             embedding_approved = [t for t in tracks if scoring.passes(t.id)]
             unscored_ids = set(scoring.unscored_ids())
             pass1_pool = [t for t in tracks if t.id in unscored_ids]
+
+            # Transparence : un rejet par similarité doit laisser une trace visible
+            # dans le tiroir de décisions au même titre qu'un rejet GPT — sinon
+            # impossible de savoir, après coup, si ce chemin a bien tourné.
+            rejected = [t for t in tracks if t.id not in unscored_ids and t.id not in {a.id for a in embedding_approved}]
+            for t in rejected:
+                score = scoring.scores.get(t.id)
+                decisions.append(Decision(
+                    id=t.id, title=t.title, include=False,
+                    reason=f"[similarité] {score:.2f} < seuil {scoring.threshold:.2f} — trop éloigné des ancres",
+                ))
+
             yield _event("status", message=(
                 f"{len(embedding_approved)}/{len(tracks)} candidats retenus par similarité "
                 f"({len(pass1_pool)} sans signal externe, évalués par GPT)"
