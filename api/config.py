@@ -23,8 +23,13 @@ SPOTIFY_USERNAME = os.getenv('SPOTIFY_USERNAME')
 SPOTIFY_SCOPE    = "playlist-read-private playlist-modify-private playlist-modify-public user-library-read"
 
 # OpenAI
-GPT_KEY   = os.getenv('GPT_KEY')
-GPT_MODEL = "gpt-4.1"
+GPT_KEY         = os.getenv('GPT_KEY')
+GPT_MODEL       = "gpt-4.1"
+EMBEDDING_MODEL = "text-embedding-3-small"
+
+# Last.fm (tags — signal indépendant de ce que GPT "connaît" d'un morceau).
+# Optionnel : en son absence, le classement retombe sur le comportement actuel.
+LASTFM_API_KEY = os.getenv('LASTFM_API_KEY')
 
 # Behaviour
 BATCH_SIZE      = 60

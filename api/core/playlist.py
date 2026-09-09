@@ -7,6 +7,7 @@ from typing import Generator
 from spotipy.exceptions import SpotifyException
 
 from core.models import Track, Decision
+from core.scoring import score_against_anchors
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PASS2
 from services.auth import save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source
@@ -87,33 +88,57 @@ def generate_playlist_stream(
     anchor_tracks = _resolve_anchors(anchors, track_map)
     decisions: list[Decision] = []
 
+    # Quand des ancres sont fournies, la similarité d'embedding (prompt + tags
+    # Last.fm) remplace la passe 1 GPT pour les morceaux qui ont un signal —
+    # moins cher, déterministe, et pas limité par ce que GPT connaît. Les
+    # morceaux sans tags gardent l'ancien chemin (passe 1 GPT classique).
+    embedding_approved: list[Track] = []
+    pass1_pool = tracks
+    if anchor_tracks:
+        yield _event("status", message="Calcul de similarité aux ancres…")
+        try:
+            scoring = score_against_anchors(tracks, prompt, anchor_tracks)
+            embedding_approved = [t for t in tracks if scoring.passes(t.id)]
+            unscored_ids = set(scoring.unscored_ids())
+            pass1_pool = [t for t in tracks if t.id in unscored_ids]
+            yield _event("status", message=(
+                f"{len(embedding_approved)}/{len(tracks)} candidats retenus par similarité "
+                f"({len(pass1_pool)} sans signal externe, évalués par GPT)"
+            ))
+        except Exception as e:
+            logger.warning("Embedding scoring failed, falling back to full GPT pass: %s", e)
+            pass1_pool = tracks
+
     if multi_pass:
-        # --- Pass 1 : broad filter ---
-        pass1_batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
-        total_p1      = len(pass1_batches)
+        # --- Pass 1 : broad filter (uniquement sur ce que l'embedding n'a pas pu trancher) ---
+        candidates = list(embedding_approved)
+        if pass1_pool:
+            pass1_batches = [pass1_pool[i:i+_cfg.BATCH_SIZE] for i in range(0, len(pass1_pool), _cfg.BATCH_SIZE)]
+            total_p1      = len(pass1_batches)
 
-        yield _event("status",   message=f"{len(tracks)} morceaux — Passe 1 : filtrage large ({total_p1} batch(s))…")
-        yield _event("progress", done=0, total=total_p1, phase=1)
+            yield _event("status",   message=f"{len(pass1_pool)} morceaux — Passe 1 : filtrage large ({total_p1} batch(s))…")
+            yield _event("progress", done=0, total=total_p1, phase=1)
 
-        raw_p1: dict[int, list] = {}
-        with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-            futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1): i
-                    for i, b in enumerate(pass1_batches)}
-            done = 0
-            for fut in as_completed(futs):
-                raw_p1[futs[fut]] = fut.result()
-                done += 1
-                yield _event("progress", done=done, total=total_p1, phase=1)
+            raw_p1: dict[int, list] = {}
+            with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1): i
+                        for i, b in enumerate(pass1_batches)}
+                done = 0
+                for fut in as_completed(futs):
+                    raw_p1[futs[fut]] = fut.result()
+                    done += 1
+                    yield _event("progress", done=done, total=total_p1, phase=1)
 
-        pass1_decisions: list[Decision] = []
-        for idx in sorted(raw_p1):
-            for d in raw_p1[idx]:
-                try:
-                    pass1_decisions.append(Decision(**d))
-                except (TypeError, ValueError) as e:
-                    logger.warning("Skipping malformed decision %s: %s", d, e)
+            pass1_decisions: list[Decision] = []
+            for idx in sorted(raw_p1):
+                for d in raw_p1[idx]:
+                    try:
+                        pass1_decisions.append(Decision(**d))
+                    except (TypeError, ValueError) as e:
+                        logger.warning("Skipping malformed decision %s: %s", d, e)
 
-        candidates = [track_map[d.id] for d in pass1_decisions if d.include and d.id in track_map]
+            candidates += [track_map[d.id] for d in pass1_decisions if d.include and d.id in track_map]
+
         yield _event("status", message=f"Passe 1 terminée — {len(candidates)}/{len(tracks)} candidats retenus")
 
         # --- Pass 2 : selective filter ---
@@ -145,11 +170,12 @@ def generate_playlist_stream(
             yield _event("status", message="Aucun candidat retenu en passe 1")
 
     else:
-        # --- Single pass ---
-        batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
+        # --- Single pass (pré-filtré par similarité si des ancres sont fournies) ---
+        working = embedding_approved + pass1_pool if anchor_tracks else tracks
+        batches = [working[i:i+_cfg.BATCH_SIZE] for i in range(0, len(working), _cfg.BATCH_SIZE)]
         total_b = len(batches)
 
-        yield _event("status",   message=f"{len(tracks)} morceaux — {total_b} batch(s) en cours…")
+        yield _event("status",   message=f"{len(working)} morceaux — {total_b} batch(s) en cours…")
         yield _event("progress", done=0, total=total_b)
 
         anch    = anchor_tracks or None
