@@ -34,7 +34,10 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
-html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+html, body {
+  height: 100vh; height: 100dvh; height: var(--app-vh, 100dvh);
+  overflow: hidden; overscroll-behavior: none;
+}
 
 body {
   background: var(--bg); color: var(--text);
