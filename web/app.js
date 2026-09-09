@@ -740,9 +740,10 @@ async function savePrompt(id) {
 }
 
 // ── History ──────────────────────────────────────────────────────────────
-let _allHistory      = []
-let _historyLimit    = 10
-const HISTORY_LIMITS = [10, 20, 40, null] // null = tout
+let _allHistory       = []
+let _historyLimit     = 10
+let _hideEmptySyncs   = true
+const HISTORY_LIMITS  = [10, 20, 40, null] // null = tout
 
 async function loadHistory() {
   try {
@@ -755,14 +756,24 @@ async function loadHistory() {
   renderHistory()
 }
 
+function onToggleHideEmptySyncs(checked) {
+  _hideEmptySyncs = checked
+  renderHistory()
+}
+
+function _isEmptySync(h) {
+  return h.action === 'sync' && !(h.selected_songs || 0) && !(h.removed_songs || 0)
+}
+
 const ICON_GENERATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M4 12h16"/></svg>'
 const ICON_SYNC      = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 4v5h-5" /></svg>'
 
 function renderHistory() {
   const container = document.getElementById('history-list')
   const bar       = document.getElementById('history-limit-bar')
+  const visible   = _hideEmptySyncs ? _allHistory.filter(h => !_isEmptySync(h)) : _allHistory
 
-  if (_allHistory.length > 10) {
+  if (visible.length > 10) {
     bar.innerHTML = HISTORY_LIMITS.map(n => {
       const label  = n === null ? 'Tout' : n
       const active = n === _historyLimit ? ' active' : ''
@@ -772,25 +783,28 @@ function renderHistory() {
     bar.innerHTML = ''
   }
 
-  if (!_allHistory.length) {
+  if (!visible.length) {
     container.innerHTML = `
       <div class="empty-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        <span>Aucune activité pour l'instant.<br/>Génère ta première playlist pour la voir ici.</span>
+        <span>${_allHistory.length
+          ? 'Rien à afficher — que des sync sans changement, masquées.'
+          : "Aucune activité pour l'instant.<br/>Génère ta première playlist pour la voir ici."}</span>
       </div>`
     return
   }
 
-  const items = _historyLimit === null ? _allHistory : _allHistory.slice(0, _historyLimit)
+  const items = _historyLimit === null ? visible : visible.slice(0, _historyLimit)
   container.innerHTML = ''
   items.forEach(h => {
     const isGen  = h.action === 'generate'
     const name   = h.playlist_name || h.playlist_id || '—'
     const count  = isGen ? `${h.selected_songs}/${h.checked_songs}` : `+${h.selected_songs||0} / -${h.removed_songs||0}`
     const detail = isGen ? (h.prompt || '') : `sync — ${h.checked_songs||0} vérifiés`
+    const title  = isGen ? `IA-${name}` : name
 
     const el = document.createElement('div')
-    el.className = 'history-item' + (isGen ? ' clickable' : '')
+    el.className = 'history-item clickable'
     el.innerHTML = `
       <span class="hi-badge ${h.action}">${isGen ? ICON_GENERATE : ICON_SYNC}</span>
       <div class="hi-body">
@@ -801,7 +815,7 @@ function renderHistory() {
         <p class="hi-detail">${esc(detail)}</p>
         <p class="hi-date">${formatDate(h.created_at)}</p>
       </div>`
-    if (isGen) el.addEventListener('click', () => openDecisions(h.id, `IA-${name}`, detail))
+    el.addEventListener('click', () => openDecisions(h.id, title, detail))
     container.appendChild(el)
   })
 }
@@ -849,7 +863,7 @@ async function openDecisions(historyId, title, subtitle) {
     const data = await res.json()
     if (!res.ok || !data.data?.length) {
       _sheetItems = []
-      body.innerHTML = '<div class="empty-state"><span>Aucun détail enregistré pour cette génération.</span></div>'
+      body.innerHTML = '<div class="empty-state"><span>Aucun détail enregistré pour cette entrée.</span></div>'
       return
     }
     _sheetItems = data.data

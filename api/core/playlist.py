@@ -464,7 +464,10 @@ def sync_all_playlists_stream(
                                     note = f"[Sync additif depuis \"{source_name}\" — {date_str}] "
                                 spotify.prepend_playlist_description(pid, note)
                         added     = len(selected)
-                        results[pid] = {"name": name, "removed": len(to_remove), "added": added, "checked": checked}
+                        results[pid] = {
+                            "name": name, "removed": len(to_remove), "added": added, "checked": checked,
+                            "decisions": [{"title": d.title, "include": d.include, "reason": d.reason} for d in all_decisions],
+                        }
                 else:
                     results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0}
         except Exception:

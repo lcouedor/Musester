@@ -236,13 +236,19 @@ def sync(access_token: str):
             access_token, _parse_id(source_id),
             destructive=destructive, target_ids=target_ids,
         ):
-            yield event
             try:
                 data = _json.loads(event.removeprefix("data: ").strip())
-                if data.get("kind") == "done":
-                    results.update(data.get("results", {}))
             except Exception:
-                pass
+                data = None
+
+            if data and data.get("kind") == "done":
+                results.update(data.get("results", {}))
+                # Même logique que /generate : le détail des décisions reste côté
+                # serveur pour la persistance, pas besoin de l'envoyer ici.
+                slim = {pid: {k: v for k, v in r.items() if k != "decisions"} for pid, r in results.items()}
+                yield f"data: {_json.dumps({'kind': 'done', 'results': slim})}\n\n"
+            else:
+                yield event
 
         if results:
             save_sync(user_id, results, _elapsed(start))

@@ -183,6 +183,10 @@
           <span class="section-title">Historique</span>
           <div class="limit-row" id="history-limit-bar"></div>
         </div>
+        <label class="hist-filter">
+          <input type="checkbox" id="toggle-hide-empty-syncs" checked onchange="onToggleHideEmptySyncs(this.checked)" />
+          Masquer les sync sans changement (+0 / -0)
+        </label>
         <div class="list" id="history-list"><span class="muted-note">Chargement…</span></div>
       </section>
 

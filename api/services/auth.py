@@ -157,11 +157,12 @@ def save_sync(user_id: str, results: dict, execution_time: str):
     now = datetime.now().isoformat()
     with db_conn(HISTORY_PATH) as conn:
         for pid, v in results.items():
+            decisions_json = json.dumps(v['decisions']) if v.get('decisions') else None
             conn.execute(f"""
                 INSERT INTO history
                     (user_id, action, created_at, playlist_id, playlist_name,
-                     checked_songs, selected_songs, removed_songs, execution_time)
-                VALUES ({PH}, 'sync', {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
+                     checked_songs, selected_songs, removed_songs, execution_time, decisions)
+                VALUES ({PH}, 'sync', {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
             """, (
                 user_id,
                 now,
@@ -171,6 +172,7 @@ def save_sync(user_id: str, results: dict, execution_time: str):
                 v.get('added', 0),
                 v.get('removed', 0),
                 execution_time,
+                decisions_json,
             ))
 
 
