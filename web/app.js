@@ -13,7 +13,15 @@ function esc(s) {
 // (PWA standalone) : on mesure la hauteur réellement visible et on la pousse
 // dans une variable CSS que .shell utilise en priorité.
 function setViewportHeight() {
-  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight
+  // En PWA standalone iOS, innerHeight/visualViewport.height rapportent une
+  // valeur plus courte que l'écran réel (constaté : 47px d'écart sur un
+  // appareil de test) — d'où la bande noire sous la nav quoi qu'on fasse
+  // avec elle. screen.height donne la vraie hauteur physique ; on ne s'en
+  // sert QUE là (ailleurs screen.height = résolution du moniteur, pas de
+  // la fenêtre, donc inutilisable sur desktop).
+  const isStandaloneIOS = window.navigator.standalone === true
+  const reported = window.visualViewport ? window.visualViewport.height : window.innerHeight
+  const h = isStandaloneIOS ? Math.max(reported, window.screen.height) : reported
   document.documentElement.style.setProperty('--app-vh', `${h}px`)
 }
 setViewportHeight()
