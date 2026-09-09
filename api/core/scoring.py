@@ -94,22 +94,38 @@ def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track]
 
     anchor_centroid = centroid(anchor_vecs)
 
+    # Avec une seule ancre, le centroïde EST cette ancre — la comparer à "elle
+    # moins elle-même" n'a pas de sens (rien à laisser de côté), donc toute
+    # variante de leave-one-out y retombe sur une auto-comparaison (similarité
+    # ~1.0, constaté en test réel : seuil à 0.66 alors que le bon candidat
+    # plafonnait à 0.44). Dans ce cas précis, on calibre — et on score les
+    # candidats — sur la similarité au prompt seule, sans terme "ancres" :
+    # non-circulaire quel que soit le nombre d'ancres, donc cohérent.
+    single_anchor = len(anchor_vecs) == 1
+
     anchor_self_scores = []
     for i, vec in enumerate(anchor_vecs):
         if not vec:
             continue
-        others   = anchor_vecs[:i] + anchor_vecs[i + 1:]
-        loo_ref  = centroid(others) if others else anchor_centroid
-        s = _combined_score(prompt_vec, loo_ref, vec)
+        if single_anchor:
+            s = cosine_similarity(prompt_vec, vec) if prompt_vec else None
+        else:
+            others  = anchor_vecs[:i] + anchor_vecs[i + 1:]
+            loo_ref = centroid(others)
+            s = _combined_score(prompt_vec, loo_ref, vec)
         if s is not None:
             anchor_self_scores.append(s)
 
     threshold = (min(anchor_self_scores) - 0.03) if anchor_self_scores else 0.3
 
-    scores = {
-        track.id: _combined_score(prompt_vec, anchor_centroid, vec)
-        for track, vec in zip(tracks, track_vecs)
-    }
+    def _track_score(vec):
+        if not vec:
+            return None
+        if single_anchor:
+            return cosine_similarity(prompt_vec, vec) if prompt_vec else None
+        return _combined_score(prompt_vec, anchor_centroid, vec)
+
+    scores = {track.id: _track_score(vec) for track, vec in zip(tracks, track_vecs)}
 
     logger.info(
         "Scoring: %d/%d morceaux tagués, seuil calibré à %.3f (ancres: %s)",
