@@ -157,7 +157,7 @@ def generate(access_token: str):
         if not pl.get("name") or not pl.get("prompt"):
             return _err(f"Playlist {i+1} : name and prompt are required")
 
-    user_id = session.get("user_id")
+    user_id = _current_user_id()
     start   = time.time()
     pid     = _parse_id(source_id)
 
@@ -226,7 +226,7 @@ def sync(access_token: str):
     if not source_id:
         return _err("Missing required parameter: source_id")
 
-    user_id = session.get("user_id")
+    user_id = _current_user_id()
     start   = time.time()
 
     def stream():
@@ -324,7 +324,7 @@ def update_prompt(access_token: str, playlist_id: str):
     if not prompt:
         return _err("Missing required parameter: prompt")
 
-    user_id = session.get("user_id")
+    user_id = _current_user_id()
     save_playlist_prompt(user_id, playlist_id, prompt)
     logger.info("Prompt updated for playlist '%s'", playlist_id)
     return _ok({"playlist_id": playlist_id, "prompt": prompt})
@@ -337,14 +337,14 @@ def update_prompt(access_token: str, playlist_id: str):
 @bp.route("/history", methods=["GET"])
 @require_auth
 def history(access_token: str):
-    user_id = session.get("user_id")
+    user_id = _current_user_id()
     return _ok(get_history(user_id))
 
 
 @bp.route("/history/<int:history_id>/decisions", methods=["GET"])
 @require_auth
 def history_decisions(access_token: str, history_id: int):
-    user_id = session.get("user_id")
+    user_id = _current_user_id()
     decisions = get_history_decisions(user_id, history_id)
     if decisions is None:
         return _err("Aucun détail de décision pour cette entrée", 404)
