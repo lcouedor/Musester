@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Generator
 
 from spotipy.exceptions import SpotifyException
@@ -40,6 +40,27 @@ def _resolve_anchors(anchors_raw: list[dict], track_map: dict) -> list[Track]:
         result.append(t or Track(id=a.get("id", ""), title=a.get("title", ""),
                                   artists=a.get("artists", ""), album=""))
     return result
+
+
+HEARTBEAT_SECONDS = 8
+
+def _wait_with_heartbeat(futs: dict, heartbeat_every: float = HEARTBEAT_SECONDS):
+    """Comme as_completed(futs), mais émet aussi ('heartbeat', None) toutes
+    les `heartbeat_every` secondes tant qu'aucun lot n'a terminé. Un lot GPT
+    lent à répondre (retry, requête qui traîne) ne produisait plus aucun
+    événement SSE pendant toute sa durée — le seul signal visible arrivait à
+    la complétion du lot suivant, potentiellement plusieurs minutes plus
+    tard, ce qui a déjà déclenché le timeout d'inactivité de 3 min côté
+    client (constaté en usage réel) alors que le serveur travaillait
+    toujours activement en arrière-plan."""
+    pending = set(futs)
+    while pending:
+        done, pending = wait(pending, timeout=heartbeat_every, return_when=FIRST_COMPLETED)
+        if not done:
+            yield ("heartbeat", None)
+            continue
+        for fut in done:
+            yield ("done", fut)
 
 
 def _decisions_payload(decisions: list[Decision], track_map: dict) -> list[dict]:
@@ -132,7 +153,10 @@ def generate_playlist_stream(
                 futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1): i
                         for i, b in enumerate(pass1_batches)}
                 done = 0
-                for fut in as_completed(futs):
+                for kind, fut in _wait_with_heartbeat(futs):
+                    if kind == "heartbeat":
+                        yield _event("status", message=f"Passe 1 — toujours en cours… ({done}/{total_p1} lots terminés)")
+                        continue
                     raw_p1[futs[fut]] = fut.result()
                     done += 1
                     yield _event("progress", done=done, total=total_p1, phase=1)
@@ -166,7 +190,10 @@ def generate_playlist_stream(
                 futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anch, languages): i
                         for i, b in enumerate(pass2_batches)}
                 done = 0
-                for fut in as_completed(futs):
+                for kind, fut in _wait_with_heartbeat(futs):
+                    if kind == "heartbeat":
+                        yield _event("status", message=f"Passe 2 — toujours en cours… ({done}/{total_p2} lots terminés)")
+                        continue
                     raw_p2[futs[fut]] = fut.result()
                     done += 1
                     yield _event("progress", done=done, total=total_p2, phase=2)
@@ -199,7 +226,10 @@ def generate_playlist_stream(
             futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anch, languages): i
                     for i, b in enumerate(batches)}
             done = 0
-            for fut in as_completed(futs):
+            for kind, fut in _wait_with_heartbeat(futs):
+                if kind == "heartbeat":
+                    yield _event("status", message=f"Toujours en cours… ({done}/{total_b} lots terminés)")
+                    continue
                 raw_sp[futs[fut]] = fut.result()
                 done += 1
                 yield _event("progress", done=done, total=total_b)
@@ -284,7 +314,10 @@ def generate_multi_playlist_stream(
             futs = {ex.submit(_classifier._process_batch, combined_prompt, b, i, total_p1, PREPROMPT_PASS1): i
                     for i, b in enumerate(pass1_batches)}
             done = 0
-            for fut in as_completed(futs):
+            for kind, fut in _wait_with_heartbeat(futs):
+                if kind == "heartbeat":
+                    yield _event("status", message=f"Passe 1 — toujours en cours… ({done}/{total_p1} lots terminés)")
+                    continue
                 raw_p1[futs[fut]] = fut.result()
                 done += 1
                 yield _event("progress", done=done, total=total_p1, phase=1)
@@ -322,7 +355,10 @@ def generate_multi_playlist_stream(
         futs = {ex.submit(_classifier._process_batch_multi, playlists_spec, b, i, total_b): i
                 for i, b in enumerate(batches)}
         done = 0
-        for fut in as_completed(futs):
+        for kind, fut in _wait_with_heartbeat(futs):
+            if kind == "heartbeat":
+                yield _event("status", message=f"Toujours en cours… ({done}/{total_b} lots terminés)")
+                continue
             raw_by_idx[futs[fut]] = fut.result()
             done += 1
             evt = {"done": done, "total": total_b}
@@ -475,11 +511,19 @@ def sync_all_playlists_stream(
                         yield _event("status", message=f"[{i+1}/{total}] {name} — {total_b} batch(s) en cours…")
 
                         raw_sync: dict[int, list] = {}
+                        sync_done = 0
                         with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
                             futs = {ex.submit(_classifier._process_batch, prompt, b, j, total_b, None, sync_anchors): j
                                     for j, b in enumerate(batches)}
-                            for fut in as_completed(futs):
+                            for kind, fut in _wait_with_heartbeat(futs):
+                                if kind == "heartbeat":
+                                    yield _event("status", message=(
+                                        f"[{i+1}/{total}] {name} — toujours en cours… "
+                                        f"({sync_done}/{total_b} lots terminés)"
+                                    ))
+                                    continue
                                 raw_sync[futs[fut]] = fut.result()
+                                sync_done += 1
 
                         all_decisions: list[Decision] = []
                         for j in sorted(raw_sync):
@@ -582,7 +626,10 @@ def refilter_playlist_stream(
         futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anchor_track, languages): i
                 for i, b in enumerate(batches)}
         done = 0
-        for fut in as_completed(futs):
+        for kind, fut in _wait_with_heartbeat(futs):
+            if kind == "heartbeat":
+                yield _event("status", message=f"Toujours en cours… ({done}/{total_b} lots terminés)")
+                continue
             raw[futs[fut]] = fut.result()
             done += 1
             yield _event("progress", done=done, total=total_b)

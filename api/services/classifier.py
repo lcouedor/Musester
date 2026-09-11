@@ -154,7 +154,13 @@ class ClassifierService:
     def __new__(cls):
         if not cls._instance:
             cls._instance = super().__new__(cls)
-            cls._instance._client = OpenAI(api_key=config.GPT_KEY)
+            # Le SDK OpenAI a un timeout par défaut de 600s (lecture) — une
+            # requête qui traîne reste invisible côté SSE jusqu'à 10 minutes
+            # (aucun yield tant que le batch n'a pas terminé), largement au-delà
+            # du timeout d'inactivité de 3 min côté front. Le retry local (5
+            # tentatives, backoff exponentiel) a besoin qu'un échec arrive vite
+            # pour faire son travail, pas qu'il traîne.
+            cls._instance._client = OpenAI(api_key=config.GPT_KEY, timeout=45)
         return cls._instance
 
     def generate_description(self, prompt: str) -> str:

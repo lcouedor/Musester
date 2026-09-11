@@ -6,7 +6,10 @@ from openai import OpenAI
 import config
 
 logger = logging.getLogger(__name__)
-_client = OpenAI(api_key=config.GPT_KEY)
+# Un seul appel embarque potentiellement tous les textes d'une grosse
+# bibliothèque (1000+ morceaux) — plus généreux que le client de classification,
+# mais toujours borné (défaut SDK : 600s, invisible côté SSE jusqu'à échéance).
+_client = OpenAI(api_key=config.GPT_KEY, timeout=90)
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:

@@ -10,7 +10,7 @@ from services.lastfm import get_track_tags
 from services.lyrics import get_lyrics, detect_language
 
 logger = logging.getLogger(__name__)
-_client = OpenAI(api_key=config.GPT_KEY)
+_client = OpenAI(api_key=config.GPT_KEY, timeout=45)
 
 
 def translate_to_english(text: str) -> str:
