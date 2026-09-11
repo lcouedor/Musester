@@ -20,13 +20,12 @@ SPOTIFY_ID       = os.getenv('SPOTIFY_ID')
 SPOTIFY_SECRET   = os.getenv('SPOTIFY_SECRET')
 SPOTIFY_REDIRECT = os.getenv('SPOTIFY_REDIRECT')
 SPOTIFY_USERNAME = os.getenv('SPOTIFY_USERNAME')
-SPOTIFY_SCOPE    = "playlist-read-private playlist-modify-private playlist-modify-public user-library-read ugc-image-upload"
+SPOTIFY_SCOPE    = "playlist-read-private playlist-modify-private playlist-modify-public user-library-read"
 
 # OpenAI
 GPT_KEY         = os.getenv('GPT_KEY')
 GPT_MODEL       = "gpt-4.1-mini"
 EMBEDDING_MODEL = "text-embedding-3-small"
-IMAGE_MODEL     = "gpt-image-2.5-flare"  # génération rapide, coût le plus bas — largement suffisant pour une cover
 
 # Last.fm (tags — signal indépendant de ce que GPT "connaît" d'un morceau).
 # Optionnel : en son absence, le classement retombe sur le comportement actuel.

@@ -163,11 +163,10 @@ def me():
 @bp.route("/generate", methods=["POST"])
 @require_auth
 def generate(access_token: str):
-    body           = request.json or {}
-    source_id      = body.get("source_id", "").strip()
-    playlists      = body.get("playlists", [])
-    multi_pass     = body.get("multi_pass", True)
-    generate_cover = bool(body.get("generate_cover", False))
+    body       = request.json or {}
+    source_id  = body.get("source_id", "").strip()
+    playlists  = body.get("playlists", [])
+    multi_pass = body.get("multi_pass", True)
 
     if not source_id:
         return _err("Missing required parameter: source_id")
@@ -188,13 +187,11 @@ def generate(access_token: str):
         def stream_fn():
             return generate_playlist_stream(
                 access_token, pid, pl["name"], pl["prompt"], user_id,
-                anchors=pl.get("anchors", []), multi_pass=multi_pass, generate_cover=generate_cover,
+                anchors=pl.get("anchors", []), multi_pass=multi_pass,
             )
     else:
         def stream_fn():
-            return generate_multi_playlist_stream(
-                access_token, pid, playlists, user_id, multi_pass=multi_pass, generate_cover=generate_cover,
-            )
+            return generate_multi_playlist_stream(access_token, pid, playlists, user_id, multi_pass=multi_pass)
 
     def stream():
         import json as _json

@@ -430,10 +430,6 @@ button { cursor: pointer; }
 .history-item { display: flex; align-items: flex-start; gap: 11px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); padding: 11px 13px; }
 .history-item.clickable { cursor: pointer; transition: border-color .15s; }
 .history-item.clickable:active { border-color: var(--accent); }
-.hi-badge { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.hi-badge.generate { background: var(--accent-soft); color: var(--accent); }
-.hi-badge.sync { background: var(--surface); color: var(--muted); }
-.hi-badge svg { width: 15px; height: 15px; }
 .hi-cover { width: 30px; height: 30px; border-radius: 9px; object-fit: cover; flex-shrink: 0; display: block; background: var(--border); }
 .hi-body { flex: 1; min-width: 0; }
 .hi-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }

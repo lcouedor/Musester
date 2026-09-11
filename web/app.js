@@ -506,9 +506,8 @@ function _renderRecap() {
 
 // ── Generate ─────────────────────────────────────────────────────────────
 function generate() {
-  const sourceId      = document.getElementById('source-id').value.trim()
-  const multiPass     = document.getElementById('toggle-multipass').checked
-  const generateCover = document.getElementById('toggle-cover').checked
+  const sourceId  = document.getElementById('source-id').value.trim()
+  const multiPass = document.getElementById('toggle-multipass').checked
 
   let valid         = validateFields([{ fieldId: 'field-source', value: sourceId }])
   let firstErrorTab = -1
@@ -549,7 +548,7 @@ function generate() {
 
   runSSE({
     url:  `${API}/generate`,
-    body: { source_id: sourceId, playlists, multi_pass: multiPass, generate_cover: generateCover },
+    body: { source_id: sourceId, playlists, multi_pass: multiPass },
 
     onStatus: msg => { statusEl.textContent = msg },
 
@@ -571,13 +570,6 @@ function generate() {
       ).join('')
       resultEl.classList.remove('hidden')
       toast(`${results.length > 1 ? results.length + ' playlists créées' : 'Playlist créée'} ✓`, 'ok')
-      // La cover est cosmétique et ne doit jamais bloquer la création — mais un
-      // échec silencieux est indiscernable d'une feature qui marche, donc un
-      // toast dédié pour chaque playlist concernée plutôt qu'un log serveur
-      // que personne ne regarde.
-      results.filter(r => r.cover_error).forEach(r => {
-        toast(`Cover « ${r.playlist_name} » — ${r.cover_error}`, 'err')
-      })
       loadPlaylists()
       loadHistory()
     },
@@ -887,9 +879,6 @@ function _isEmptySync(h) {
   return h.action === 'sync' && !(h.selected_songs || 0) && !(h.removed_songs || 0)
 }
 
-const ICON_GENERATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M4 12h16"/></svg>'
-const ICON_SYNC      = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 4v5h-5" /></svg>'
-
 function renderHistory() {
   const container = document.getElementById('history-list')
   const bar       = document.getElementById('history-limit-bar')
@@ -929,9 +918,7 @@ function renderHistory() {
     const el = document.createElement('div')
     el.className = 'history-item clickable'
     el.innerHTML = `
-      ${cover
-        ? `<img class="hi-cover" src="${cover}" alt="" loading="lazy" />`
-        : `<span class="hi-badge ${h.action}">${isGen ? ICON_GENERATE : ICON_SYNC}</span>`}
+      ${coverThumb(cover, 'hi-cover')}
       <div class="hi-body">
         <div class="hi-top">
           <span class="hi-name">${isGen ? 'IA-' : ''}${esc(name)}</span>
