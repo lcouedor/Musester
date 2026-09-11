@@ -425,7 +425,7 @@ button { cursor: pointer; }
 .pi-meta .mono { color: var(--muted); }
 .pi-edit { display: none; flex-direction: column; gap: 10px; margin-top: 10px; }
 .pi-edit.open { display: flex; }
-.icon-btn.spinning svg { animation: spin .8s linear infinite; }
+.pi-progress { margin-top: 8px; }
 
 .history-item { display: flex; align-items: flex-start; gap: 11px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); padding: 11px 13px; }
 .history-item.clickable { cursor: pointer; transition: border-color .15s; }

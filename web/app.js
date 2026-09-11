@@ -787,6 +787,10 @@ async function loadPlaylists() {
           <span class="mono">${p.track_count} morceaux</span>
           <span>sync ${p.last_sync ? formatDate(p.last_sync) : 'jamais'}</span>
         </div>
+        <div class="pi-progress hidden progress-card" id="pi-progress-${p.id}">
+          <div class="progress-wrap"><div class="progress-bar" id="pi-progress-bar-${p.id}"></div></div>
+          <div class="status-line" id="pi-status-${p.id}"></div>
+        </div>
         <div class="pi-edit" id="pi-edit-${p.id}">
           <div class="field" id="pi-field-${p.id}">
             <label>Nouveau prompt</label>
@@ -806,26 +810,63 @@ async function loadPlaylists() {
       el.addEventListener('click', () => openAnchors(p.id, p.name, p.prompt))
       container.appendChild(el)
     })
+    // Un ré-filtrage encore en cours sur une AUTRE playlist ne doit pas
+    // disparaître juste parce que celui-ci vient de terminer et a déclenché
+    // ce rebuild — plusieurs peuvent tourner en parallèle (rien ne l'empêche
+    // côté front), donc on réaffiche l'état "actif" de tous ceux en vol après
+    // avoir reconstruit la liste, sans quoi leur barre resterait figée sur
+    // des noeuds DOM qui viennent d'être remplacés.
+    _activeRefilters.forEach(id => setRefilterUI(id, true))
   } catch {
     container.innerHTML = '<span class="muted-note">Erreur de chargement</span>'
   }
 }
 
+// Plusieurs ré-filtrages peuvent tourner en même temps (un par playlist) —
+// chacun a sa propre barre de progression adressée par id, indépendante des
+// autres. Le seul plafond réel est côté serveur : gunicorn tourne avec 2
+// workers en prod, donc au-delà de 2 en vol simultanément, les suivants
+// patientent en file avant de démarrer plutôt que d'échouer.
+const _activeRefilters = new Set()
+
+function setRefilterUI(id, active) {
+  const btn        = document.getElementById(`pi-refilter-${id}`)
+  const progressEl = document.getElementById(`pi-progress-${id}`)
+  const barEl      = document.getElementById(`pi-progress-bar-${id}`)
+  const statusEl   = document.getElementById(`pi-status-${id}`)
+  if (btn) btn.disabled = active
+  if (progressEl) progressEl.classList.toggle('hidden', !active)
+  if (active && barEl) { barEl.className = 'progress-bar indeterminate' }
+  if (active && statusEl) statusEl.textContent = 'Connexion…'
+}
+
 async function refilterPlaylist(id, name) {
-  const btn = document.getElementById(`pi-refilter-${id}`)
-  if (btn) { btn.disabled = true; btn.classList.add('spinning') }
+  _activeRefilters.add(id)
+  setRefilterUI(id, true)
+
   runSSE({
     url:  `${API}/playlists/${id}/refilter`,
     body: {},
+    onStatus: msg => {
+      const statusEl = document.getElementById(`pi-status-${id}`)
+      if (statusEl) statusEl.textContent = msg
+    },
+    onProgress: (done, total) => {
+      const barEl = document.getElementById(`pi-progress-bar-${id}`)
+      if (!barEl) return
+      barEl.className   = 'progress-bar'
+      barEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
+    },
     onDone: data => {
-      if (btn) { btn.disabled = false; btn.classList.remove('spinning') }
+      _activeRefilters.delete(id)
       const r = data.result || {}
       toast(r.removed ? `« ${name} » — ${r.removed} morceau(x) retiré(s)` : `« ${name} » — rien à changer`, 'ok')
       loadPlaylists()
       loadHistory()
     },
     onError: err => {
-      if (btn) { btn.disabled = false; btn.classList.remove('spinning') }
+      _activeRefilters.delete(id)
+      setRefilterUI(id, false)
       toast(err, 'err')
     },
   })
