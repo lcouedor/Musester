@@ -24,7 +24,7 @@ SPOTIFY_SCOPE    = "playlist-read-private playlist-modify-private playlist-modif
 
 # OpenAI
 GPT_KEY         = os.getenv('GPT_KEY')
-GPT_MODEL       = "gpt-4.1"
+GPT_MODEL       = "gpt-4.1-mini"
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 # Last.fm (tags — signal indépendant de ce que GPT "connaît" d'un morceau).

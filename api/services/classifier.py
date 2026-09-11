@@ -94,6 +94,90 @@ Respond ONLY with a JSON array, no extra text:
 """
 
 
+# Structured Outputs — la sortie n'était garantie que par une consigne dans le
+# texte du prompt ("Respond ONLY with a JSON array"), avec un retry sur
+# json.JSONDecodeError comme unique filet. Le schéma strict élimine cette
+# classe d'erreurs entièrement (root doit être un objet, d'où le wrapping
+# "decisions" — déballé juste après l'appel, le reste du code ne voit aucune
+# différence).
+_DECISIONS_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "track_decisions",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id":      {"type": "string"},
+                            "title":   {"type": "string"},
+                            "include": {"type": "boolean"},
+                            "reason":  {"type": "string"},
+                        },
+                        "required": ["id", "title", "include", "reason"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["decisions"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def _multi_decisions_schema(playlist_indices: list[int]) -> dict:
+    """Même principe que _DECISIONS_SCHEMA, mais chaque morceau porte une
+    décision par playlist. Les clés de "decisions" doivent être fixes pour un
+    schéma strict — construites dynamiquement ici à partir des index réels de
+    CETTE requête (au plus 3, la route /generate refuse au-delà)."""
+    decision_props = {
+        str(i): {
+            "type": "object",
+            "properties": {"include": {"type": "boolean"}, "reason": {"type": "string"}},
+            "required": ["include", "reason"],
+            "additionalProperties": False,
+        }
+        for i in playlist_indices
+    }
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "multi_track_decisions",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "tracks": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id":        {"type": "string"},
+                                "title":     {"type": "string"},
+                                "decisions": {
+                                    "type": "object",
+                                    "properties": decision_props,
+                                    "required": [str(i) for i in playlist_indices],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "required": ["id", "title", "decisions"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["tracks"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
 class ClassifierService:
     _instance = None
 
@@ -151,8 +235,9 @@ class ClassifierService:
                         {"role": "system", "content": preprompt},
                         {"role": "user",   "content": prompt},
                     ],
+                    response_format=_DECISIONS_SCHEMA,
                 )
-                result = json.loads(response.choices[0].message.content)
+                result = json.loads(response.choices[0].message.content)["decisions"]
                 logger.info("Batch %d/%d OK (%d tracks)", idx + 1, total, len(batch))
                 return result
             except json.JSONDecodeError as e:
@@ -196,7 +281,8 @@ class ClassifierService:
             for t in sorted_batch
         )
 
-        empty = {p["idx"]: [] for p in playlists_spec}
+        empty  = {p["idx"]: [] for p in playlists_spec}
+        schema = _multi_decisions_schema([p["idx"] for p in playlists_spec])
 
         for attempt in range(5):
             try:
@@ -206,8 +292,9 @@ class ClassifierService:
                         {"role": "system", "content": PREPROMPT_MULTI},
                         {"role": "user",   "content": prompt},
                     ],
+                    response_format=schema,
                 )
-                raw = json.loads(response.choices[0].message.content)
+                raw = json.loads(response.choices[0].message.content)["tracks"]
 
                 result: dict[int, list[dict]] = {p["idx"]: [] for p in playlists_spec}
                 for item in raw:
