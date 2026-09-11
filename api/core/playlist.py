@@ -43,15 +43,26 @@ def _resolve_anchors(anchors_raw: list[dict], track_map: dict) -> list[Track]:
     return result
 
 
-def _apply_cover(spotify: SpotifyService, playlist_id: str, prompt: str):
-    """Cosmétique uniquement — jamais laissé faire échouer la création."""
+def _apply_cover(spotify: SpotifyService, playlist_id: str, prompt: str) -> str | None:
+    """Cosmétique uniquement — jamais laissé faire échouer la création de la
+    playlist elle-même. Retourne un message d'erreur lisible en cas d'échec
+    (None si tout s'est bien passé) — un échec silencieux est indiscernable
+    d'une feature qui marche, ce qui rend le problème impossible à diagnostiquer
+    depuis l'app une fois qu'on a quitté les logs serveur."""
     b64 = _generate_cover_image(prompt)
     if not b64:
-        return
+        return "génération de l'image échouée côté OpenAI"
     try:
         spotify.set_playlist_cover(playlist_id, b64)
+        return None
+    except SpotifyException as e:
+        logger.warning("Failed to set cover for '%s': %s", playlist_id, e)
+        if e.http_status == 403:
+            return "permission manquante — déconnecte-toi puis reconnecte-toi à Spotify pour l'accorder"
+        return f"Spotify a refusé la cover (code {e.http_status})"
     except Exception as e:
         logger.warning("Failed to set cover for '%s': %s", playlist_id, e)
+        return "erreur inattendue lors de l'envoi de la cover"
 
 
 def _decisions_payload(decisions: list[Decision], track_map: dict) -> list[dict]:
@@ -228,9 +239,10 @@ def generate_playlist_stream(
     save_playlist_prompt(user_id, playlist_id, prompt, anchors=saved_anchors, source_id=source_id)
     _write_decisions_log([{"name": playlist_name, "prompt": prompt, "anchors": anchor_tracks, "decisions": decisions}])
 
+    cover_error = None
     if generate_cover:
         yield _event("status", message="Génération de la cover…")
-        _apply_cover(spotify, playlist_id, prompt)
+        cover_error = _apply_cover(spotify, playlist_id, prompt)
 
     yield _event("done", results=[{
         "playlist_idx":   0,
@@ -239,6 +251,7 @@ def generate_playlist_stream(
         "checked_songs":  len(tracks),
         "selected_songs": len(selected),
         "decisions":      _decisions_payload(decisions, track_map),
+        "cover_error":    cover_error,
     }])
 
 
@@ -362,9 +375,10 @@ def generate_multi_playlist_stream(
         saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists, "cover_url": t.cover_url}
                           for t in spec["anchors"]] or None
         save_playlist_prompt(user_id, playlist_id, spec["prompt"], anchors=saved_anchors, source_id=source_id)
+        cover_error = None
         if generate_cover:
             yield _event("status", message=f"Cover de « {spec['name']} »…")
-            _apply_cover(spotify, playlist_id, spec["prompt"])
+            cover_error = _apply_cover(spotify, playlist_id, spec["prompt"])
         results.append({
             "playlist_idx":   spec["idx"],
             "playlist_id":    playlist_id,
@@ -372,6 +386,7 @@ def generate_multi_playlist_stream(
             "checked_songs":  len(tracks),
             "selected_songs": len(selected),
             "decisions":      _decisions_payload(decisions, track_map),
+            "cover_error":    cover_error,
         })
         log_entries.append({
             "name":      spec["name"],

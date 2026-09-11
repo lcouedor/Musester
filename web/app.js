@@ -571,6 +571,13 @@ function generate() {
       ).join('')
       resultEl.classList.remove('hidden')
       toast(`${results.length > 1 ? results.length + ' playlists créées' : 'Playlist créée'} ✓`, 'ok')
+      // La cover est cosmétique et ne doit jamais bloquer la création — mais un
+      // échec silencieux est indiscernable d'une feature qui marche, donc un
+      // toast dédié pour chaque playlist concernée plutôt qu'un log serveur
+      // que personne ne regarde.
+      results.filter(r => r.cover_error).forEach(r => {
+        toast(`Cover « ${r.playlist_name} » — ${r.cover_error}`, 'err')
+      })
       loadPlaylists()
       loadHistory()
     },
