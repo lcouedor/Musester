@@ -186,6 +186,10 @@ class ClassifierService:
         anchors: list[Track] = None,
         languages: dict[str, str] = None,
     ) -> list[dict]:
+        # temperature=0 + seed fixe : sans ça, la même playlist régénérée avec
+        # exactement le même prompt peut ressortir avec des morceaux différents
+        # d'un run à l'autre — pas garanti bit-à-bit identique (OpenAI ne le
+        # promet qu'en best-effort), mais nettement plus stable qu'en défaut.
         if preprompt is None:
             preprompt = PREPROMPT
 
@@ -225,6 +229,8 @@ class ClassifierService:
                         {"role": "user",   "content": prompt},
                     ],
                     response_format=_DECISIONS_SCHEMA,
+                    temperature=0,
+                    seed=42,
                 )
                 result = json.loads(response.choices[0].message.content)["decisions"]
                 logger.info("Batch %d/%d OK (%d tracks)", idx + 1, total, len(batch))
@@ -282,6 +288,8 @@ class ClassifierService:
                         {"role": "user",   "content": prompt},
                     ],
                     response_format=schema,
+                    temperature=0,
+                    seed=42,
                 )
                 raw = json.loads(response.choices[0].message.content)["tracks"]
 
