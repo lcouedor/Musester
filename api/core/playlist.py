@@ -98,7 +98,13 @@ def generate_playlist_stream(
     if anchor_tracks:
         yield _event("status", message="Calcul de similarité aux ancres…")
         try:
-            scoring = score_against_anchors(tracks, prompt, anchor_tracks)
+            scoring = None
+            for kind, *rest in score_against_anchors(tracks, prompt, anchor_tracks):
+                if kind == "progress":
+                    done, total = rest
+                    yield _event("progress", done=done, total=total)
+                else:
+                    scoring = rest[0]
             embedding_approved = [t for t in tracks if scoring.passes(t.id)]
             approved_ids = {a.id for a in embedding_approved}
             pass1_pool = [t for t in tracks if t.id not in approved_ids]

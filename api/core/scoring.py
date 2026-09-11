@@ -1,5 +1,5 @@
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from openai import OpenAI
 
@@ -86,13 +86,24 @@ def _combined_score(prompt_vec: list[float], reference_vec: list[float], vec: li
     return sum(parts) / len(parts) if parts else None
 
 
-def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track]) -> ScoringResult:
-    """Similarité de chaque morceau au prompt + au profil des ancres, avec un
-    seuil calibré sur les ancres elles-mêmes plutôt qu'une constante arbitraire :
-    le seuil = la similarité de l'ancre la plus "excentrée" par rapport aux
-    autres, avec une petite marge — un candidat qui matche moins bien que ça
-    matche moins bien que ce que l'utilisateur a lui-même désigné comme
-    correspondant exactement à ce qu'il veut.
+def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track]):
+    """Générateur : yield ('progress', done, total) pendant la partie lente
+    (profil Last.fm + paroles de CHAQUE morceau de la source, pas seulement
+    des candidats), puis yield ('result', ScoringResult) une fois terminé.
+
+    Cette étape porte sur toute la source, pas un sous-ensemble — pour une
+    grosse bibliothèque (ex. 1000+ titres likés), même à ~50ms/morceau avec
+    8 requêtes en parallèle, ça reste de l'ordre de la minute. Sans retour de
+    progression, ce délai est indiscernable d'un blocage aux yeux de
+    l'utilisateur (constaté : confondu avec le bug de troncature du flux SSE
+    corrigé par ailleurs) — d'où le report goutte-à-goutte plutôt qu'un simple
+    ThreadPoolExecutor.map() qui ne rendrait la main qu'à la toute fin.
+
+    Seuil calibré sur les ancres elles-mêmes plutôt qu'une constante
+    arbitraire : le seuil = la similarité de l'ancre la plus "excentrée" par
+    rapport aux autres, avec une petite marge — un candidat qui matche moins
+    bien que ça matche moins bien que ce que l'utilisateur a lui-même désigné
+    comme correspondant exactement à ce qu'il veut.
 
     Calibration en leave-one-out : chaque ancre est comparée au centroïde des
     AUTRES ancres (jamais elle-même), sinon la comparaison est circulaire —
@@ -103,9 +114,19 @@ def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track]
     """
     prompt_en = translate_to_english(prompt)
 
+    track_profiles  = [None] * len(tracks)
+    anchor_profiles = [None] * len(anchors)
+    total = len(tracks) + len(anchors)
+    done  = 0
+
     with ThreadPoolExecutor(max_workers=8) as ex:
-        track_profiles  = list(ex.map(_track_profile_text, tracks))
-        anchor_profiles = list(ex.map(_track_profile_text, anchors))
+        futs = {ex.submit(_track_profile_text, t): ("track", i) for i, t in enumerate(tracks)}
+        futs.update({ex.submit(_track_profile_text, a): ("anchor", i) for i, a in enumerate(anchors)})
+        for fut in as_completed(futs):
+            kind, i = futs[fut]
+            (track_profiles if kind == "track" else anchor_profiles)[i] = fut.result()
+            done += 1
+            yield ("progress", done, total)
 
     texts   = [prompt_en] + track_profiles + anchor_profiles
     vectors = embed_texts(texts)
@@ -162,4 +183,4 @@ def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track]
         sum(1 for s in scores.values() if s is not None), len(tracks), threshold,
         [round(s, 3) for s in anchor_self_scores],
     )
-    return ScoringResult(scores, threshold)
+    yield ("result", ScoringResult(scores, threshold))
