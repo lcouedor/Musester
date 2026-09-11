@@ -10,7 +10,10 @@ from core.models import Track, Decision
 from core.scoring import score_against_anchors, fetch_languages
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PASS2
-from services.auth import save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source
+from services.imagegen import generate_cover as _generate_cover_image
+from services.auth import (
+    save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source, save_sync,
+)
 
 logger      = logging.getLogger(__name__)
 _classifier = ClassifierService()
@@ -40,6 +43,28 @@ def _resolve_anchors(anchors_raw: list[dict], track_map: dict) -> list[Track]:
     return result
 
 
+def _apply_cover(spotify: SpotifyService, playlist_id: str, prompt: str):
+    """Cosmétique uniquement — jamais laissé faire échouer la création."""
+    b64 = _generate_cover_image(prompt)
+    if not b64:
+        return
+    try:
+        spotify.set_playlist_cover(playlist_id, b64)
+    except Exception as e:
+        logger.warning("Failed to set cover for '%s': %s", playlist_id, e)
+
+
+def _decisions_payload(decisions: list[Decision], track_map: dict) -> list[dict]:
+    out = []
+    for d in decisions:
+        t = track_map.get(d.id)
+        out.append({
+            "title": d.title, "include": d.include, "reason": d.reason,
+            "cover_url": t.cover_url if t else None,
+        })
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Generate — single playlist
 # ---------------------------------------------------------------------------
@@ -52,6 +77,7 @@ def generate_playlist_stream(
     user_id: str,
     anchors: list[dict] = None,
     multi_pass: bool = True,
+    generate_cover: bool = False,
 ) -> Generator[str, None, None]:
 
     import config as _cfg
@@ -200,9 +226,14 @@ def generate_playlist_stream(
 
     description   = _classifier.generate_description(prompt)
     playlist_id   = spotify.create_playlist(playlist_name, selected, description=description)
-    saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists} for t in anchor_tracks] or None
+    saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists, "cover_url": t.cover_url}
+                      for t in anchor_tracks] or None
     save_playlist_prompt(user_id, playlist_id, prompt, anchors=saved_anchors, source_id=source_id)
     _write_decisions_log([{"name": playlist_name, "prompt": prompt, "anchors": anchor_tracks, "decisions": decisions}])
+
+    if generate_cover:
+        yield _event("status", message="Génération de la cover…")
+        _apply_cover(spotify, playlist_id, prompt)
 
     yield _event("done", results=[{
         "playlist_idx":   0,
@@ -210,7 +241,7 @@ def generate_playlist_stream(
         "playlist_name":  playlist_name,
         "checked_songs":  len(tracks),
         "selected_songs": len(selected),
-        "decisions":      [{"title": d.title, "include": d.include, "reason": d.reason} for d in decisions],
+        "decisions":      _decisions_payload(decisions, track_map),
     }])
 
 
@@ -224,6 +255,7 @@ def generate_multi_playlist_stream(
     playlists: list[dict],
     user_id: str,
     multi_pass: bool = False,
+    generate_cover: bool = False,
 ) -> Generator[str, None, None]:
     """
     playlists: [{'name': str, 'prompt': str, 'anchors': list[dict]}]
@@ -330,15 +362,19 @@ def generate_multi_playlist_stream(
         selected      = _filter(decisions)
         description   = _classifier.generate_description(spec["prompt"])
         playlist_id   = spotify.create_playlist(spec["name"], selected, description=description)
-        saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists} for t in spec["anchors"]] or None
+        saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists, "cover_url": t.cover_url}
+                          for t in spec["anchors"]] or None
         save_playlist_prompt(user_id, playlist_id, spec["prompt"], anchors=saved_anchors, source_id=source_id)
+        if generate_cover:
+            yield _event("status", message=f"Cover de « {spec['name']} »…")
+            _apply_cover(spotify, playlist_id, spec["prompt"])
         results.append({
             "playlist_idx":   spec["idx"],
             "playlist_id":    playlist_id,
             "playlist_name":  spec["name"],
             "checked_songs":  len(tracks),
             "selected_songs": len(selected),
-            "decisions":      [{"title": d.title, "include": d.include, "reason": d.reason} for d in decisions],
+            "decisions":      _decisions_payload(decisions, track_map),
         })
         log_entries.append({
             "name":      spec["name"],
@@ -430,10 +466,11 @@ def sync_all_playlists_stream(
                 results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0, "reason": "no reference date"}
             else:
                 # Filtre défensif : ignorer les morceaux source sans date
-                new_tracks = [
+                new_tracks    = [
                     t for t in source_tracks
                     if t.added_at and t.added_at > last_added and t.id not in existing_ids
                 ]
+                new_track_map = {t.id: t for t in new_tracks}
                 checked = len(new_tracks)
 
                 yield _event("status", message=(
@@ -493,7 +530,7 @@ def sync_all_playlists_stream(
                         added     = len(selected)
                         results[pid] = {
                             "name": name, "removed": len(to_remove), "added": added, "checked": checked,
-                            "decisions": [{"title": d.title, "include": d.include, "reason": d.reason} for d in all_decisions],
+                            "decisions": _decisions_payload(all_decisions, new_track_map),
                         }
                 else:
                     results[pid] = {"name": name, "removed": len(to_remove), "added": 0, "checked": 0}
@@ -508,6 +545,85 @@ def sync_all_playlists_stream(
     if log_entries:
         _write_decisions_log(log_entries)
     yield _event("done", results=results)
+
+
+# ---------------------------------------------------------------------------
+# Re-filter — réévalue le contenu ACTUEL d'une playlist contre son prompt
+# ACTUEL (utile après une édition de prompt : le sync normal ne réévalue
+# jamais les morceaux déjà présents, seulement les nouveaux arrivants côté
+# source). Ne touche jamais à la source — retire uniquement ce qui ne
+# correspond plus.
+# ---------------------------------------------------------------------------
+
+def refilter_playlist_stream(
+    access_token: str,
+    playlist_id: str,
+    user_id: str,
+) -> Generator[str, None, None]:
+    import time as _time
+    import config as _cfg
+
+    spotify = SpotifyService(access_token)
+    name    = spotify.get_playlist_name(playlist_id)
+    prompt  = get_playlist_prompt(playlist_id)
+
+    if not prompt:
+        yield _event("error", message=f"Aucun prompt enregistré pour « {name} ».")
+        return
+
+    yield _event("status", message=f"« {name} » — récupération des morceaux actuels…")
+    try:
+        tracks = spotify.get_tracks(playlist_id)
+    except Exception as e:
+        yield _event("error", message=source_error_message(playlist_id, e))
+        return
+
+    if not tracks:
+        yield _event("done", result={"name": name, "checked": 0, "removed": 0, "decisions": []})
+        return
+
+    raw_anchors  = get_playlist_anchors(playlist_id)
+    anchor_track = [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
+                     for a in raw_anchors] or None
+
+    yield _event("status", message="Détection de la langue chantée…")
+    languages = fetch_languages(tracks)
+
+    batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
+    total_b = len(batches)
+    yield _event("status",   message=f"{len(tracks)} morceaux — {total_b} batch(s) en cours…")
+    yield _event("progress", done=0, total=total_b)
+
+    start   = _time.time()
+    raw: dict[int, list] = {}
+    with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+        futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anchor_track, languages): i
+                for i, b in enumerate(batches)}
+        done = 0
+        for fut in as_completed(futs):
+            raw[futs[fut]] = fut.result()
+            done += 1
+            yield _event("progress", done=done, total=total_b)
+
+    decisions: list[Decision] = []
+    for idx in sorted(raw):
+        for d in raw[idx]:
+            try:
+                decisions.append(Decision(**d))
+            except (TypeError, ValueError) as e:
+                logger.warning("Skipping malformed decision %s: %s", d, e)
+
+    to_remove = [d.id for d in decisions if not d.include]
+    if to_remove:
+        spotify.remove_from_playlist(playlist_id, to_remove)
+
+    track_map = {t.id: t for t in tracks}
+    result = {
+        "name": name, "checked": len(tracks), "removed": len(to_remove),
+        "decisions": _decisions_payload(decisions, track_map),
+    }
+    save_sync(user_id, {playlist_id: result}, f"{round(_time.time() - start, 2)}s")
+    yield _event("done", result=result)
 
 
 # ---------------------------------------------------------------------------

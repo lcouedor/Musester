@@ -110,6 +110,17 @@ class SpotifyService:
         data = self._client.playlist(playlist_id, fields="name")
         return data.get("name") or playlist_id
 
+    def get_playlist_cover(self, playlist_id: str) -> Optional[str]:
+        if playlist_id == "liked":
+            return None
+        data   = self._client.playlist(playlist_id, fields="images")
+        images = data.get("images") or []
+        return images[0]["url"] if images else None
+
+    def set_playlist_cover(self, playlist_id: str, image_b64: str):
+        self._client.playlist_upload_cover_image(playlist_id, image_b64)
+        logger.info("Cover set for playlist '%s'", playlist_id)
+
     def get_playlist_description(self, playlist_id: str) -> str:
         data = self._client.playlist(playlist_id, fields="description")
         return data.get("description") or ""

@@ -506,8 +506,9 @@ function _renderRecap() {
 
 // ── Generate ─────────────────────────────────────────────────────────────
 function generate() {
-  const sourceId  = document.getElementById('source-id').value.trim()
-  const multiPass = document.getElementById('toggle-multipass').checked
+  const sourceId      = document.getElementById('source-id').value.trim()
+  const multiPass     = document.getElementById('toggle-multipass').checked
+  const generateCover = document.getElementById('toggle-cover').checked
 
   let valid         = validateFields([{ fieldId: 'field-source', value: sourceId }])
   let firstErrorTab = -1
@@ -548,7 +549,7 @@ function generate() {
 
   runSSE({
     url:  `${API}/generate`,
-    body: { source_id: sourceId, playlists, multi_pass: multiPass },
+    body: { source_id: sourceId, playlists, multi_pass: multiPass, generate_cover: generateCover },
 
     onStatus: msg => { statusEl.textContent = msg },
 
@@ -595,12 +596,11 @@ let _syncSelectedIds = null
 let _syncPickerOpen  = false
 
 async function ensureSyncPlaylists() {
-  if (_syncPlaylists.length) return
-  try {
-    const res  = await fetch(`${API}/playlists`, { headers: authHeaders() })
-    const data = await res.json()
-    _syncPlaylists = (data.data || []).map(p => ({ id: p.id, name: p.name }))
-  } catch { _syncPlaylists = [] }
+  // loadPlaylists() a déjà chargé exactement ces données pour l'écran Accueil
+  // au boot de l'app — inutile de refaire le même fetch (et son temps de
+  // chargement) juste pour remplir le picker.
+  await ensureCachedPlaylists()
+  _syncPlaylists = _cachedPlaylists.map(p => ({ id: p.id, name: p.name }))
 }
 
 async function toggleSyncPicker() {
@@ -724,12 +724,31 @@ function sync() {
 }
 
 // ── Playlists (Accueil) ──────────────────────────────────────────────────
+// Cache partagé avec le picker de sync (ensureSyncPlaylists) et l'historique
+// (pour retrouver la cover d'une entrée par playlist_id) — un seul fetch de
+// /playlists sert les trois écrans au lieu d'un par écran.
+let _cachedPlaylists = []
+
+async function ensureCachedPlaylists() {
+  if (_cachedPlaylists.length) return
+  try {
+    const res  = await fetch(`${API}/playlists`, { headers: authHeaders() })
+    const data = await res.json()
+    _cachedPlaylists = data.data || []
+  } catch { _cachedPlaylists = [] }
+}
+
+function coverThumb(url, cls = 'pi-cover') {
+  return url ? `<img class="${cls}" src="${url}" alt="" loading="lazy" />` : `<div class="${cls} ph"></div>`
+}
+
 async function loadPlaylists() {
   const container = document.getElementById('playlist-list')
   try {
     const res  = await fetch(`${API}/playlists`, { headers: authHeaders() })
     const data = await res.json()
-    if (!res.ok || !data.data?.length) {
+    _cachedPlaylists = data.data || []
+    if (!res.ok || !_cachedPlaylists.length) {
       container.innerHTML = `
         <div class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -738,17 +757,23 @@ async function loadPlaylists() {
       return
     }
     container.innerHTML = ''
-    data.data.forEach(p => {
+    _cachedPlaylists.forEach(p => {
       const el = document.createElement('div')
       el.className = 'playlist-item clickable'
       el.innerHTML = `
         <div class="pi-row">
-          <span class="pi-name">${esc(p.name)}</span>
-          <button class="icon-btn" title="Modifier le prompt">
+          ${coverThumb(p.cover_url)}
+          <div class="pi-head">
+            <span class="pi-name">${esc(p.name)}</span>
+            <p class="pi-prompt" id="pi-prompt-${p.id}">${esc(p.prompt) || '—'}</p>
+          </div>
+          <button class="icon-btn" id="pi-refilter-${p.id}" title="Ré-appliquer le prompt aux morceaux existants">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 4v5h-5" /></svg>
+          </button>
+          <button class="icon-btn" id="pi-edit-btn-${p.id}" title="Modifier le prompt">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
         </div>
-        <p class="pi-prompt" id="pi-prompt-${p.id}">${esc(p.prompt) || '—'}</p>
         <div class="pi-meta">
           <span class="mono">${p.track_count} morceaux</span>
           <span>sync ${p.last_sync ? formatDate(p.last_sync) : 'jamais'}</span>
@@ -764,7 +789,8 @@ async function loadPlaylists() {
             <button class="btn btn-secondary btn-inline" data-action="cancel">Annuler</button>
           </div>
         </div>`
-      el.querySelector('.icon-btn').addEventListener('click', e => { e.stopPropagation(); toggleEditPrompt(p.id) })
+      el.querySelector(`#pi-refilter-${p.id}`).addEventListener('click', e => { e.stopPropagation(); refilterPlaylist(p.id, p.name) })
+      el.querySelector(`#pi-edit-btn-${p.id}`).addEventListener('click', e => { e.stopPropagation(); toggleEditPrompt(p.id) })
       el.querySelector('[data-action="save"]').addEventListener('click', e => { e.stopPropagation(); savePrompt(p.id) })
       el.querySelector('[data-action="cancel"]').addEventListener('click', e => { e.stopPropagation(); toggleEditPrompt(p.id) })
       el.querySelector('.pi-edit').addEventListener('click', e => e.stopPropagation())
@@ -774,6 +800,26 @@ async function loadPlaylists() {
   } catch {
     container.innerHTML = '<span class="muted-note">Erreur de chargement</span>'
   }
+}
+
+async function refilterPlaylist(id, name) {
+  const btn = document.getElementById(`pi-refilter-${id}`)
+  if (btn) { btn.disabled = true; btn.classList.add('spinning') }
+  runSSE({
+    url:  `${API}/playlists/${id}/refilter`,
+    body: {},
+    onDone: data => {
+      if (btn) { btn.disabled = false; btn.classList.remove('spinning') }
+      const r = data.result || {}
+      toast(r.removed ? `« ${name} » — ${r.removed} morceau(x) retiré(s)` : `« ${name} » — rien à changer`, 'ok')
+      loadPlaylists()
+      loadHistory()
+    },
+    onError: err => {
+      if (btn) { btn.disabled = false; btn.classList.remove('spinning') }
+      toast(err, 'err')
+    },
+  })
 }
 
 function toggleEditPrompt(id) {
@@ -811,6 +857,7 @@ async function loadHistory() {
   } catch {
     _allHistory = []
   }
+  await ensureCachedPlaylists() // pour retrouver la cover de chaque entrée par playlist_id
   renderHistory()
 }
 
@@ -860,11 +907,14 @@ function renderHistory() {
     const count  = isGen ? `${h.selected_songs}/${h.checked_songs}` : `+${h.selected_songs||0} / -${h.removed_songs||0}`
     const detail = isGen ? (h.prompt || '') : `sync — ${h.checked_songs||0} vérifiés`
     const title  = isGen ? `IA-${name}` : name
+    const cover  = _cachedPlaylists.find(p => p.id === h.playlist_id)?.cover_url
 
     const el = document.createElement('div')
     el.className = 'history-item clickable'
     el.innerHTML = `
-      <span class="hi-badge ${h.action}">${isGen ? ICON_GENERATE : ICON_SYNC}</span>
+      ${cover
+        ? `<img class="hi-cover" src="${cover}" alt="" loading="lazy" />`
+        : `<span class="hi-badge ${h.action}">${isGen ? ICON_GENERATE : ICON_SYNC}</span>`}
       <div class="hi-body">
         <div class="hi-top">
           <span class="hi-name">${isGen ? 'IA-' : ''}${esc(name)}</span>
@@ -970,6 +1020,7 @@ function renderSheetBody(list) {
   body.innerHTML = _sheetMode === 'anchors'
     ? ANCHORS_BANNER + list.map(t => `
         <div class="decision-row">
+          ${coverThumb(t.cover_url, 'd-cover')}
           <div class="d-body">
             <div class="d-title">${esc(t.title)}</div>
             <div class="d-reason">${esc(t.artists || '')}</div>
@@ -977,6 +1028,7 @@ function renderSheetBody(list) {
         </div>`).join('')
     : list.map(d => `
         <div class="decision-row ${d.include ? 'include' : 'exclude'}">
+          ${coverThumb(d.cover_url, 'd-cover')}
           <span class="d-mark">${d.include ? ICON_CHECK : ICON_X}</span>
           <div class="d-body">
             <div class="d-title">${esc(d.title)}</div>

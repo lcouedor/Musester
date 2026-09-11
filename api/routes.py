@@ -10,7 +10,7 @@ from flask import Blueprint, request, jsonify, redirect, session, Response, stre
 
 from core.playlist import (
     generate_playlist_stream, generate_multi_playlist_stream, sync_all_playlists_stream,
-    source_error_message,
+    refilter_playlist_stream, source_error_message,
 )
 from services.auth import (
     get_auth_url, exchange_code, save_token, get_valid_token,
@@ -166,10 +166,11 @@ def me():
 @bp.route("/generate", methods=["POST"])
 @require_auth
 def generate(access_token: str):
-    body       = request.json or {}
-    source_id  = body.get("source_id", "").strip()
-    playlists  = body.get("playlists", [])
-    multi_pass = body.get("multi_pass", True)
+    body           = request.json or {}
+    source_id      = body.get("source_id", "").strip()
+    playlists      = body.get("playlists", [])
+    multi_pass     = body.get("multi_pass", True)
+    generate_cover = bool(body.get("generate_cover", False))
 
     if not source_id:
         return _err("Missing required parameter: source_id")
@@ -190,11 +191,13 @@ def generate(access_token: str):
         def stream_fn():
             return generate_playlist_stream(
                 access_token, pid, pl["name"], pl["prompt"], user_id,
-                anchors=pl.get("anchors", []), multi_pass=multi_pass,
+                anchors=pl.get("anchors", []), multi_pass=multi_pass, generate_cover=generate_cover,
             )
     else:
         def stream_fn():
-            return generate_multi_playlist_stream(access_token, pid, playlists, user_id, multi_pass=multi_pass)
+            return generate_multi_playlist_stream(
+                access_token, pid, playlists, user_id, multi_pass=multi_pass, generate_cover=generate_cover,
+            )
 
     def stream():
         import json as _json
@@ -330,12 +333,18 @@ def playlists(access_token: str):
         except Exception:
             logger.exception("Failed to load playlist '%s' (%s), skipping", p.get("name"), pid)
             continue
+        cover_url = None
+        try:
+            cover_url = spotify.get_playlist_cover(pid)
+        except Exception:
+            logger.warning("Failed to fetch cover for '%s'", pid)
         result.append({
             "id":          pid,
             "name":        p["name"],
             "prompt":      prompt,
             "track_count": len(tracks),
             "last_sync":   last_sync,
+            "cover_url":   cover_url,
         })
 
     return _ok(result)
@@ -360,9 +369,44 @@ def update_prompt(access_token: str, playlist_id: str):
         return _err("Missing required parameter: prompt")
 
     user_id = _current_user_id()
-    save_playlist_prompt(user_id, playlist_id, prompt)
+    # save_playlist_prompt fait un UPSERT complet des 3 colonnes — sans repasser
+    # les ancres et la source déjà stockées, une simple édition de prompt les
+    # écrasait silencieusement à NULL.
+    anchors   = get_playlist_anchors(playlist_id) or None
+    source_id = get_playlist_source(playlist_id)
+    save_playlist_prompt(user_id, playlist_id, prompt, anchors=anchors, source_id=source_id)
     logger.info("Prompt updated for playlist '%s'", playlist_id)
     return _ok({"playlist_id": playlist_id, "prompt": prompt})
+
+
+@bp.route("/playlists/<playlist_id>/refilter", methods=["POST"])
+@require_auth
+def refilter(access_token: str, playlist_id: str):
+    """Réévalue le contenu ACTUEL de la playlist contre son prompt ACTUEL —
+    contrairement au sync, qui ne juge jamais que les nouveaux morceaux venus
+    de la source. Utile après une édition de prompt."""
+    user_id = _current_user_id()
+
+    def stream():
+        import json as _json
+        for event in refilter_playlist_stream(access_token, playlist_id, user_id):
+            try:
+                data = _json.loads(event.removeprefix("data: ").strip())
+            except Exception:
+                data = None
+
+            if data and data.get("kind") == "done":
+                result = data.get("result") or {}
+                slim   = {k: v for k, v in result.items() if k != "decisions"}
+                yield f"data: {_json.dumps({'kind': 'done', 'result': slim})}\n\n"
+            else:
+                yield event
+
+    return Response(
+        stream_with_context(stream()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---------------------------------------------------------------------------
