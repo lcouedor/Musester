@@ -727,15 +727,27 @@ function sync() {
 // Cache partagé avec le picker de sync (ensureSyncPlaylists) et l'historique
 // (pour retrouver la cover d'une entrée par playlist_id) — un seul fetch de
 // /playlists sert les trois écrans au lieu d'un par écran.
-let _cachedPlaylists = []
+let _cachedPlaylists      = []
+let _playlistsFetchInFlight = null
+
+// loadPlaylists() (Accueil) et loadHistory() (via ensureCachedPlaylists) sont
+// déclenchés en même temps au boot de l'app — sans ce verrou sur la requête
+// en vol, les deux partaient chacun sur leur propre fetch /playlists (deux
+// fois plus lent, deux fois plus d'appels Spotify en même temps).
+function _fetchPlaylists() {
+  if (!_playlistsFetchInFlight) {
+    _playlistsFetchInFlight = fetch(`${API}/playlists`, { headers: authHeaders() })
+      .then(res => res.json())
+      .then(data => { _cachedPlaylists = data.data || []; return _cachedPlaylists })
+      .catch(() => { _cachedPlaylists = []; throw new Error('fetch failed') })
+      .finally(() => { _playlistsFetchInFlight = null })
+  }
+  return _playlistsFetchInFlight
+}
 
 async function ensureCachedPlaylists() {
   if (_cachedPlaylists.length) return
-  try {
-    const res  = await fetch(`${API}/playlists`, { headers: authHeaders() })
-    const data = await res.json()
-    _cachedPlaylists = data.data || []
-  } catch { _cachedPlaylists = [] }
+  try { await _fetchPlaylists() } catch {}
 }
 
 function coverThumb(url, cls = 'pi-cover') {
@@ -745,10 +757,8 @@ function coverThumb(url, cls = 'pi-cover') {
 async function loadPlaylists() {
   const container = document.getElementById('playlist-list')
   try {
-    const res  = await fetch(`${API}/playlists`, { headers: authHeaders() })
-    const data = await res.json()
-    _cachedPlaylists = data.data || []
-    if (!res.ok || !_cachedPlaylists.length) {
+    await _fetchPlaylists()
+    if (!_cachedPlaylists.length) {
       container.innerHTML = `
         <div class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -1087,8 +1097,7 @@ const params = new URLSearchParams(window.location.search)
 if (params.get('error')) {
   const err = params.get('error')
   const messages = {
-    unauthorized: 'Accès refusé — ton compte Spotify n\'est pas autorisé à utiliser cette application.',
-    auth_failed:  'La connexion à Spotify a échoué. Réessaie.',
+    auth_failed: 'La connexion à Spotify a échoué. Réessaie.',
   }
   toast(messages[err] || `Erreur Spotify : ${err}`, 'err')
   history.replaceState({}, '', '/')

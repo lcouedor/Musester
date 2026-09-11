@@ -74,10 +74,6 @@ class ScoringResult:
         s = self.scores.get(track_id)
         return s is not None and s >= self.threshold
 
-    def unscored_ids(self) -> list[str]:
-        """Morceaux sans tags Last.fm — aucun signal, à traiter par l'ancien chemin GPT."""
-        return [tid for tid, s in self.scores.items() if s is None]
-
 
 def _combined_score(prompt_vec: list[float], reference_vec: list[float], vec: list[float]) -> float | None:
     if not vec:
@@ -142,7 +138,15 @@ def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track]
         if s is not None:
             anchor_self_scores.append(s)
 
-    threshold = (min(anchor_self_scores) - 0.03) if anchor_self_scores else 0.3
+    # Plafonné à 0.35 : au-delà, la calibration a tendance à exiger une
+    # ressemblance textuelle (tags + paroles) plus stricte que ce qu'un
+    # candidat pertinent atteint réellement — les tags Last.fm et un extrait
+    # de paroles captent le thème, pas la production/l'énergie sonore, donc
+    # deux morceaux du même sous-genre peuvent looker différents sur le texte
+    # seul (cas réel : "From The Inside" à 0.37, "Even If It Kills Me" à 0.28
+    # pour une ancre Bring Me The Horizon — un seuil non plafonné les aurait
+    # tous les deux exclus).
+    threshold = min((min(anchor_self_scores) - 0.03) if anchor_self_scores else 0.3, 0.35)
 
     def _track_score(vec):
         if not vec:

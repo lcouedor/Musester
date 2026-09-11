@@ -20,7 +20,7 @@ SPOTIFY_ID       = os.getenv('SPOTIFY_ID')
 SPOTIFY_SECRET   = os.getenv('SPOTIFY_SECRET')
 SPOTIFY_REDIRECT = os.getenv('SPOTIFY_REDIRECT')
 SPOTIFY_USERNAME = os.getenv('SPOTIFY_USERNAME')
-SPOTIFY_SCOPE    = "playlist-read-private playlist-modify-private playlist-modify-public user-library-read"
+SPOTIFY_SCOPE    = "playlist-read-private playlist-modify-private playlist-modify-public user-library-read ugc-image-upload"
 
 # OpenAI
 GPT_KEY         = os.getenv('GPT_KEY')
@@ -40,7 +40,3 @@ PLAYLIST_PREFIX = "IA-"
 # Server
 PORT         = int(os.getenv('PORT', 5001))
 FRONTEND_URL = os.getenv('FRONTEND_URL', f'http://127.0.0.1:{PORT}').strip().rstrip('/')
-
-# Whitelist (vide = tout le monde autorisé, utile en dev)
-_raw_allowed = os.getenv('ALLOWED_USERS', '')
-ALLOWED_USERS: set[str] = {u.strip() for u in _raw_allowed.split(',') if u.strip()}

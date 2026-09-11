@@ -23,5 +23,3 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      - key: ALLOWED_USERS
-        sync: false

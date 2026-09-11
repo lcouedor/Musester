@@ -95,9 +95,17 @@ def generate_playlist_stream(
     decisions: list[Decision] = []
 
     # Quand des ancres sont fournies, la similarité d'embedding (prompt + tags
-    # Last.fm) remplace la passe 1 GPT pour les morceaux qui ont un signal —
-    # moins cher, déterministe, et pas limité par ce que GPT connaît. Les
-    # morceaux sans tags gardent l'ancien chemin (passe 1 GPT classique).
+    # Last.fm) fait office de raccourci pour les morceaux qu'elle juge
+    # clairement bons — inutile de payer un appel GPT pour eux. Mais elle ne
+    # sert JAMAIS à exclure seule : les tags Last.fm et un extrait de paroles
+    # captent le thème d'un morceau, pas sa production ni son énergie sonore,
+    # donc deux morceaux du même sous-genre peuvent scorer bas l'un par
+    # rapport à l'autre sur ce texte seul (cas réel : pour une ancre Bring Me
+    # The Horizon, "From The Inside" à 0.37 et "Even If It Kills Me" à 0.28
+    # — clairement pertinents pour un humain, mais qu'un cutoff pur aurait
+    # silencieusement exclus sans jamais les soumettre à GPT). Tout ce qui
+    # n'est pas confirmé par l'embedding — signal faible ou absent — passe
+    # donc par la passe 1 GPT normale, qui a le dernier mot.
     embedding_approved: list[Track] = []
     pass1_pool = tracks
     if anchor_tracks:
@@ -105,23 +113,12 @@ def generate_playlist_stream(
         try:
             scoring = score_against_anchors(tracks, prompt, anchor_tracks)
             embedding_approved = [t for t in tracks if scoring.passes(t.id)]
-            unscored_ids = set(scoring.unscored_ids())
-            pass1_pool = [t for t in tracks if t.id in unscored_ids]
-
-            # Transparence : un rejet par similarité doit laisser une trace visible
-            # dans le tiroir de décisions au même titre qu'un rejet GPT — sinon
-            # impossible de savoir, après coup, si ce chemin a bien tourné.
-            rejected = [t for t in tracks if t.id not in unscored_ids and t.id not in {a.id for a in embedding_approved}]
-            for t in rejected:
-                score = scoring.scores.get(t.id)
-                decisions.append(Decision(
-                    id=t.id, title=t.title, include=False,
-                    reason=f"[similarité] {score:.2f} < seuil {scoring.threshold:.2f} — trop éloigné des ancres",
-                ))
+            approved_ids = {a.id for a in embedding_approved}
+            pass1_pool = [t for t in tracks if t.id not in approved_ids]
 
             yield _event("status", message=(
-                f"{len(embedding_approved)}/{len(tracks)} candidats retenus par similarité "
-                f"({len(pass1_pool)} sans signal externe, évalués par GPT)"
+                f"{len(embedding_approved)}/{len(tracks)} candidats retenus directement par similarité "
+                f"({len(pass1_pool)} évalués par GPT)"
             ))
         except Exception as e:
             logger.warning("Embedding scoring failed, falling back to full GPT pass: %s", e)

@@ -2,6 +2,7 @@ import logging
 import os
 import secrets
 import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from typing import Optional
 from urllib.parse import quote
@@ -124,10 +125,6 @@ def callback():
         # d'être renvoyé proprement vers l'app.
         logger.exception("Spotify auth exchange failed")
         return redirect(f"{config.FRONTEND_URL}?error=auth_failed")
-
-    if config.ALLOWED_USERS and user_id not in config.ALLOWED_USERS:
-        logger.warning("Unauthorized login attempt by '%s'", user_id)
-        return redirect(f"{config.FRONTEND_URL}?error=unauthorized")
 
     try:
         save_token(user_id, token_data)
@@ -315,39 +312,46 @@ def source_tracks(access_token: str):
 # Playlists
 # ---------------------------------------------------------------------------
 
+def _load_playlist_summary(spotify: SpotifyService, p: dict) -> Optional[dict]:
+    pid = p["id"]
+    # Une playlist en erreur (ex: accès Spotify instable) ne doit pas faire
+    # 500 toute la liste — les autres restent consultables.
+    try:
+        prompt    = get_playlist_prompt(pid) or ""
+        tracks    = spotify.get_tracks(pid, extended=True)
+        last_sync = max((t.added_at for t in tracks), default=None)
+    except Exception:
+        logger.exception("Failed to load playlist '%s' (%s), skipping", p.get("name"), pid)
+        return None
+    cover_url = None
+    try:
+        cover_url = spotify.get_playlist_cover(pid)
+    except Exception:
+        logger.warning("Failed to fetch cover for '%s'", pid)
+    return {
+        "id":          pid,
+        "name":        p["name"],
+        "prompt":      prompt,
+        "track_count": len(tracks),
+        "last_sync":   last_sync,
+        "cover_url":   cover_url,
+    }
+
+
 @bp.route("/playlists", methods=["GET"])
 @require_auth
 def playlists(access_token: str):
     spotify   = SpotifyService(access_token)
     generated = spotify.get_user_generated_playlists()
-    result    = []
 
-    for p in generated:
-        pid = p["id"]
-        # Une playlist en erreur (ex: accès Spotify instable) ne doit pas faire
-        # 500 toute la liste — les autres restent consultables.
-        try:
-            prompt    = get_playlist_prompt(pid) or ""
-            tracks    = spotify.get_tracks(pid, extended=True)
-            last_sync = max((t.added_at for t in tracks), default=None)
-        except Exception:
-            logger.exception("Failed to load playlist '%s' (%s), skipping", p.get("name"), pid)
-            continue
-        cover_url = None
-        try:
-            cover_url = spotify.get_playlist_cover(pid)
-        except Exception:
-            logger.warning("Failed to fetch cover for '%s'", pid)
-        result.append({
-            "id":          pid,
-            "name":        p["name"],
-            "prompt":      prompt,
-            "track_count": len(tracks),
-            "last_sync":   last_sync,
-            "cover_url":   cover_url,
-        })
+    # 3 appels Spotify par playlist (morceaux, cover) — en série ça grimpe vite
+    # à plusieurs secondes dès qu'on a plus de 3-4 playlists IA-, avec l'écran
+    # Historique qui attend derrière (même endpoint, via le cache partagé côté
+    # front). Chaque playlist est indépendante des autres, donc en parallèle.
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        summaries = list(ex.map(lambda p: _load_playlist_summary(spotify, p), generated))
 
-    return _ok(result)
+    return _ok([s for s in summaries if s is not None])
 
 
 @bp.route("/playlists/<playlist_id>/anchors", methods=["GET"])
