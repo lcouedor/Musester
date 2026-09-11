@@ -85,15 +85,14 @@ class SpotifyService:
             return None
         return min(t.added_at for t in tracks)
 
-    def create_playlist(self, name: str, track_ids: list) -> str:
-        """Crée une playlist sans description — le prompt est en DB."""
+    def create_playlist(self, name: str, track_ids: list, description: str = '') -> str:
         sp      = self._client
         user_id = sp.current_user()['id']
         playlist = sp.user_playlist_create(
             user=user_id,
             name=config.PLAYLIST_PREFIX + name,
             public=False,
-            description='',
+            description=description[:300],  # limite Spotify
         )
         self._bulk_add(playlist['id'], track_ids)
         logger.info("Created playlist '%s' with %d tracks", name, len(track_ids))

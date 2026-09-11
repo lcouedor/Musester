@@ -157,6 +157,25 @@ class ClassifierService:
             cls._instance._client = OpenAI(api_key=config.GPT_KEY)
         return cls._instance
 
+    def generate_description(self, prompt: str) -> str:
+        """Description Spotify courte écrite à la génération — pour que la
+        playlist se comprenne d'elle-même même consultée hors de Musester."""
+        try:
+            response = self._client.chat.completions.create(
+                model=config.GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": (
+                        "Rewrite this playlist request into a short, natural playlist description "
+                        "(max 200 characters). No quotes, no hashtags, no emoji. Keep the original language."
+                    )},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            return response.choices[0].message.content.strip()[:300]
+        except Exception as e:
+            logger.warning("Description generation failed, falling back to raw prompt: %s", e)
+            return prompt[:300]
+
     def _process_batch(
         self,
         description: str,

@@ -218,7 +218,8 @@ def generate_playlist_stream(
     selected    = _filter(decisions)
     yield _event("status", message=f"{len(selected)}/{len(tracks)} morceaux retenus — création de la playlist…")
 
-    playlist_id   = spotify.create_playlist(playlist_name, selected)
+    description   = _classifier.generate_description(prompt)
+    playlist_id   = spotify.create_playlist(playlist_name, selected, description=description)
     saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists} for t in anchor_tracks] or None
     save_playlist_prompt(user_id, playlist_id, prompt, anchors=saved_anchors, source_id=source_id)
     _write_decisions_log([{"name": playlist_name, "prompt": prompt, "anchors": anchor_tracks, "decisions": decisions}])
@@ -347,7 +348,8 @@ def generate_multi_playlist_stream(
     for spec in playlists_spec:
         decisions     = decisions_by_playlist[spec["idx"]]
         selected      = _filter(decisions)
-        playlist_id   = spotify.create_playlist(spec["name"], selected)
+        description   = _classifier.generate_description(spec["prompt"])
+        playlist_id   = spotify.create_playlist(spec["name"], selected, description=description)
         saved_anchors = [{"id": t.id, "title": t.title, "artists": t.artists} for t in spec["anchors"]] or None
         save_playlist_prompt(user_id, playlist_id, spec["prompt"], anchors=saved_anchors, source_id=source_id)
         results.append({
