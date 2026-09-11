@@ -28,6 +28,35 @@ setViewportHeight()
 window.addEventListener('resize', setViewportHeight)
 window.visualViewport?.addEventListener('resize', setViewportHeight)
 
+// ── Splash — spectre audio radial ───────────────────────────────────────
+// 28 "spokes" plantés au centre, chacun tourné à son angle puis contenant une
+// barre qui grandit depuis sa propre base (voir styles.css) — un délai
+// d'animation NÉGATIF démarre chaque barre en plein milieu de son cycle
+// (au lieu de toutes à zéro), donc pas de pouls groupé au premier paint.
+function buildSplashViz() {
+  const container = document.getElementById('splash-bars')
+  if (!container) return
+  const COUNT = 28
+  for (let i = 0; i < COUNT; i++) {
+    const spoke = document.createElement('div')
+    spoke.className = 'spoke'
+    spoke.style.transform = `rotate(${(360 / COUNT) * i}deg)`
+    const bar = document.createElement('div')
+    bar.className = 'bar'
+    bar.style.setProperty('--peak', (1.6 + Math.random() * 1.6).toFixed(2))
+    bar.style.animationDuration = `${(0.9 + Math.random() * 0.9).toFixed(2)}s`
+    bar.style.animationDelay    = `${(-Math.random() * 1.6).toFixed(2)}s`
+    spoke.appendChild(bar)
+    container.appendChild(spoke)
+  }
+}
+buildSplashViz()
+
+// Durée plancher d'affichage du splash — sinon sur un cache chaud (token déjà
+// valide) l'écran flashe pendant ~50ms, trop court pour même voir l'animation.
+// Sans effet sur le cas lent (réveil serveur) : le délai est déjà écoulé.
+const SPLASH_MIN_MS = 1100
+
 // ── Debug (temporaire) ───────────────────────────────────────────────────
 // Tape 5x sur "Musester" en haut pour afficher les mesures réelles de
 // l'appareil — aucun devtools accessible sur iPhone pour aller les chercher.
@@ -112,8 +141,11 @@ function clearError(fieldId) { document.getElementById(fieldId).classList.remove
 
 // ── Auth ─────────────────────────────────────────────────────────────────
 async function checkAuth() {
+  const minDelay = new Promise(r => setTimeout(r, SPLASH_MIN_MS))
+
   if (!getSessionToken()) {
     // Jamais connecté sur cet appareil — inutile d'appeler l'API, direct vers le login.
+    await minDelay
     document.getElementById('view-loading').classList.add('hidden')
     setDisconnected()
     return
@@ -126,9 +158,13 @@ async function checkAuth() {
   try {
     const res  = await fetch(`${API}/auth/me`, { headers: authHeaders() })
     const data = await res.json()
+    await minDelay
     if (res.ok && data.data?.user_id) setConnected(data.data.user_id)
     else { clearSessionToken(); setDisconnected() }
-  } catch { setDisconnected() }
+  } catch {
+    await minDelay
+    setDisconnected()
+  }
   finally {
     clearTimeout(slowTimer)
     document.getElementById('view-loading').classList.add('hidden')
@@ -169,13 +205,30 @@ function switchScreen(name) {
 }
 
 // ── SSE helper ───────────────────────────────────────────────────────────
+// Un flux qui s'arrête net sans fermer la connexion (coupure réseau, worker
+// Render tué en plein calcul) laissait `reader.read()` en attente pour
+// toujours — bouton bloqué sur "En cours…" indéfiniment, aucune erreur
+// affichée. Un minuteur d'inactivité, réarmé à chaque octet reçu, coupe et
+// remonte une erreur si plus rien n'arrive pendant IDLE_TIMEOUT_MS.
+const SSE_IDLE_TIMEOUT_MS = 180000
+
 function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onError }) {
+  const controller = new AbortController()
+  let idleTimer = null
+  const armIdleTimer = () => {
+    clearTimeout(idleTimer)
+    idleTimer = setTimeout(() => controller.abort(), SSE_IDLE_TIMEOUT_MS)
+  }
+  armIdleTimer()
+
   fetch(url, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
+    signal: controller.signal,
   }).then(async res => {
     if (!res.ok) {
+      clearTimeout(idleTimer)
       const data = await res.json().catch(() => ({}))
       onError(data.error || `Erreur ${res.status}`)
       return
@@ -186,6 +239,7 @@ function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onErr
 
     while (true) {
       const { done, value } = await reader.read()
+      armIdleTimer()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
@@ -202,7 +256,11 @@ function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onErr
         } catch {}
       }
     }
-  }).catch(e => onError(e.message))
+    clearTimeout(idleTimer)
+  }).catch(e => {
+    clearTimeout(idleTimer)
+    onError(e.name === 'AbortError' ? 'Connexion perdue avec le serveur — réessaie.' : e.message)
+  })
 }
 
 // ── Playlist tabs (Générer) ─────────────────────────────────────────────
@@ -976,9 +1034,11 @@ function formatDate(iso) {
 const params = new URLSearchParams(window.location.search)
 if (params.get('error')) {
   const err = params.get('error')
-  toast(err === 'unauthorized'
-    ? 'Accès refusé — ton compte Spotify n\'est pas autorisé à utiliser cette application.'
-    : `Erreur Spotify : ${err}`, 'err')
+  const messages = {
+    unauthorized: 'Accès refusé — ton compte Spotify n\'est pas autorisé à utiliser cette application.',
+    auth_failed:  'La connexion à Spotify a échoué. Réessaie.',
+  }
+  toast(messages[err] || `Erreur Spotify : ${err}`, 'err')
   history.replaceState({}, '', '/')
 }
 

@@ -150,12 +150,12 @@ button { cursor: pointer; }
 }
 .splash-center { display: flex; flex-direction: column; align-items: center; }
 .splash-logo {
-  width: 84px; height: 84px; border-radius: 22px; margin-bottom: 22px; display: block;
+  width: 84px; height: 84px; border-radius: 22px; display: block;
   box-shadow: 0 0 0 1px var(--border), 0 22px 48px -18px rgba(52,216,116,.45);
 }
 .splash-title {
   font-family: var(--font-display); font-weight: 800; font-size: 27px; letter-spacing: -0.02em;
-  margin-bottom: 30px;
+  margin-bottom: 8px;
 }
 .splash-title span { color: var(--accent); }
 .splash-status { color: var(--muted); font-size: 13.5px; margin-top: 2px; min-height: 1.2em; }
@@ -163,6 +163,46 @@ button { cursor: pointer; }
   position: absolute; bottom: calc(20px + env(safe-area-inset-bottom)); left: 0; right: 0;
   text-align: center; font-family: var(--font-mono); font-size: 11.5px;
   color: var(--muted-2); letter-spacing: .04em;
+}
+
+/* ── Splash — radial spectrum halo ────────────────────────────────────────
+   Un logo qui s'anime tout seul ne dit rien de ce que fait l'app — un
+   spectre audio radial, si. Chaque "spoke" est un point d'ancrage à taille
+   nulle planté au centre puis tourné (rotate) sur son propre axe ; la barre
+   qu'il contient démarre à 46px de ce centre (juste au-delà du logo) et
+   grandit depuis SA base (transform-origin: top center) — donc toujours
+   vers l'extérieur, jamais vers le logo. Délais d'animation négatifs +
+   durées/pics randomisés par barre pour un rendu organique, pas un pouls
+   uniforme qui trahirait l'artifice. */
+.splash-viz { position: relative; width: 168px; height: 168px; margin: 0 auto 26px; }
+.splash-viz .splash-logo {
+  position: absolute; top: 50%; left: 50%; z-index: 2;
+  transform: translate(-50%, -50%);
+  animation: logo-breathe 2.2s ease-in-out infinite;
+}
+@keyframes logo-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50%      { transform: translate(-50%, -50%) scale(1.045); }
+}
+.splash-bars { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.spoke { position: absolute; top: 50%; left: 50%; width: 0; height: 0; }
+.spoke .bar {
+  position: absolute; top: 46px; left: -1.5px;
+  width: 3px; height: 12px;
+  background: linear-gradient(to bottom, var(--accent), rgba(52, 216, 116, 0));
+  border-radius: 0 0 3px 3px;
+  transform-origin: top center;
+  animation-name: bar-pulse;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  filter: drop-shadow(0 0 3px rgba(52, 216, 116, .5));
+}
+@keyframes bar-pulse {
+  0%, 100% { transform: scaleY(1);              opacity: .22; }
+  50%      { transform: scaleY(var(--peak, 2.2)); opacity: .95; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spoke .bar, .splash-viz .splash-logo { animation: none; }
 }
 
 /* ── Sections & cards ──────────────────────────────────────────────────── */
