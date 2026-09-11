@@ -4,4 +4,7 @@
 __pycache__/
 *.pyc
 tokens.db
+history.db
 decisions.log
+.DS_Store
+.cache

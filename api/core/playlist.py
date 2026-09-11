@@ -24,7 +24,7 @@ def _filter(decisions: list) -> list:
     return [d.id for d in decisions if d.include]
 
 
-def _source_error_message(source_id: str, exc: Exception) -> str:
+def source_error_message(source_id: str, exc: Exception) -> str:
     if isinstance(exc, SpotifyException) and exc.http_status in (400, 404):
         return f"Playlist source introuvable : « {source_id} ». Vérifie l'URL, ou tape « liked » pour tes titres likés."
     logger.exception("Failed to fetch source tracks for '%s'", source_id)
@@ -38,26 +38,6 @@ def _resolve_anchors(anchors_raw: list[dict], track_map: dict) -> list[Track]:
         result.append(t or Track(id=a.get("id", ""), title=a.get("title", ""),
                                   artists=a.get("artists", ""), album=""))
     return result
-
-
-def _run_parallel_batches(batches, submit_fn, total, phase=None):
-    """
-    Yields (progress_event, raw_results_dict) pairs as batches complete.
-    submit_fn(batch, idx, total) → Future
-    Returns ordered dict: {idx: raw_result}
-    """
-    raw_by_idx = {}
-    with ThreadPoolExecutor(max_workers=__import__("config").MAX_WORKERS) as ex:
-        futures = {ex.submit(submit_fn, b, i, total): i for i, b in enumerate(batches)}
-        done = 0
-        for fut in as_completed(futures):
-            raw_by_idx[futures[fut]] = fut.result()
-            done += 1
-            kwargs = dict(done=done, total=total)
-            if phase is not None:
-                kwargs["phase"] = phase
-            yield _event("progress", **kwargs)
-    return raw_by_idx
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +61,7 @@ def generate_playlist_stream(
     try:
         tracks = spotify.get_tracks(source_id)
     except Exception as e:
-        yield _event("error", message=_source_error_message(source_id, e))
+        yield _event("error", message=source_error_message(source_id, e))
         return
     track_map = {t.id: t for t in tracks}
 
@@ -257,7 +237,7 @@ def generate_multi_playlist_stream(
     try:
         tracks = spotify.get_tracks(source_id)
     except Exception as e:
-        yield _event("error", message=_source_error_message(source_id, e))
+        yield _event("error", message=source_error_message(source_id, e))
         return
     track_map = {t.id: t for t in tracks}
 
@@ -390,7 +370,7 @@ def sync_all_playlists_stream(
     try:
         source_tracks = spotify.get_tracks(source_id, extended=True)
     except Exception as e:
-        yield _event("error", message=_source_error_message(source_id, e))
+        yield _event("error", message=source_error_message(source_id, e))
         return
     source_ids    = {t.id for t in source_tracks}
     source_name   = spotify.get_playlist_name(source_id)

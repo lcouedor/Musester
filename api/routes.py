@@ -4,10 +4,14 @@ import secrets
 import time
 from functools import wraps
 from typing import Optional
+from urllib.parse import quote
 
 from flask import Blueprint, request, jsonify, redirect, session, Response, stream_with_context
 
-from core.playlist import generate_playlist_stream, generate_multi_playlist_stream, sync_all_playlists_stream
+from core.playlist import (
+    generate_playlist_stream, generate_multi_playlist_stream, sync_all_playlists_stream,
+    source_error_message,
+)
 from services.auth import (
     get_auth_url, exchange_code, save_token, get_valid_token,
     create_session_token, get_user_id_by_session_token, clear_session_token,
@@ -38,7 +42,15 @@ def _get_token() -> Optional[str]:
     user_id = _current_user_id()
     if not user_id:
         return None
-    return get_valid_token(user_id)
+    try:
+        return get_valid_token(user_id)
+    except Exception:
+        # Le refresh Spotify échoue si l'utilisateur a révoqué l'accès depuis son
+        # compte Spotify — sans ce filet, l'exception remontait crue jusqu'à Flask
+        # (500 brut) au lieu d'un 401 propre invitant à se reconnecter.
+        logger.warning("Token refresh failed for '%s' — invalidating session", user_id)
+        clear_session_token(user_id)
+        return None
 
 
 def require_auth(f):
@@ -96,21 +108,33 @@ def login():
 def callback():
     error = request.args.get("error")
     if error:
-        return redirect(f"{config.FRONTEND_URL}?error={error}")
+        return redirect(f"{config.FRONTEND_URL}?error={quote(error)}")
 
     state = request.args.get("state")
     if state != session.get("oauth_state"):
         return _err("Invalid state parameter", 403)
 
-    code       = request.args.get("code")
-    token_data = exchange_code(code)
-    user_id    = SpotifyService.get_user_id(token_data["access_token"])
+    code = request.args.get("code")
+    try:
+        token_data = exchange_code(code)
+        user_id    = SpotifyService.get_user_id(token_data["access_token"])
+    except Exception:
+        # Code déjà utilisé, expiré, ou API Spotify en carafe — sans ce filet,
+        # l'utilisateur atterrissait sur une page d'erreur Flask brute au lieu
+        # d'être renvoyé proprement vers l'app.
+        logger.exception("Spotify auth exchange failed")
+        return redirect(f"{config.FRONTEND_URL}?error=auth_failed")
 
     if config.ALLOWED_USERS and user_id not in config.ALLOWED_USERS:
         logger.warning("Unauthorized login attempt by '%s'", user_id)
         return redirect(f"{config.FRONTEND_URL}?error=unauthorized")
 
-    save_token(user_id, token_data)
+    try:
+        save_token(user_id, token_data)
+    except Exception:
+        logger.exception("Failed to save token for '%s'", user_id)
+        return redirect(f"{config.FRONTEND_URL}?error=auth_failed")
+
     session_token = create_session_token(user_id)
 
     logger.info("User '%s' authenticated", user_id)
@@ -274,9 +298,8 @@ def source_tracks(access_token: str):
     spotify = SpotifyService(access_token)
     try:
         tracks = spotify.get_tracks(_parse_id(source_id))
-    except Exception:
-        logger.exception("Failed to fetch source tracks for '%s'", source_id)
-        return _err(f"Playlist source introuvable : « {source_id} ». Vérifie l'URL, ou tape « liked » pour tes titres likés.", 404)
+    except Exception as e:
+        return _err(source_error_message(source_id, e), 404)
     return _ok([{
         "id":        t.id,
         "title":     t.title,
@@ -297,10 +320,16 @@ def playlists(access_token: str):
     result    = []
 
     for p in generated:
-        pid       = p["id"]
-        prompt    = get_playlist_prompt(pid) or ""
-        tracks    = spotify.get_tracks(pid, extended=True)
-        last_sync = max((t.added_at for t in tracks), default=None)
+        pid = p["id"]
+        # Une playlist en erreur (ex: accès Spotify instable) ne doit pas faire
+        # 500 toute la liste — les autres restent consultables.
+        try:
+            prompt    = get_playlist_prompt(pid) or ""
+            tracks    = spotify.get_tracks(pid, extended=True)
+            last_sync = max((t.added_at for t in tracks), default=None)
+        except Exception:
+            logger.exception("Failed to load playlist '%s' (%s), skipping", p.get("name"), pid)
+            continue
         result.append({
             "id":          pid,
             "name":        p["name"],
