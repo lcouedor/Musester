@@ -25,12 +25,6 @@ Rules:
 - If you don't know the song, exclude it (include: false)
 - Be selective — a focused playlist is better than an exhaustive one
 - Provide a short reason (max 10 words) to justify your choice
-
-Respond ONLY with a JSON array, no extra text:
-[
-  {"id": "...", "title": "...", "include": true,  "reason": "Downtempo, fits focused late-night work"},
-  {"id": "...", "title": "...", "include": false, "reason": "Too energetic, breaks the mood"}
-]
 """
 
 PREPROMPT_PASS1 = """
@@ -43,12 +37,6 @@ Rules:
 - If you don't know the song, exclude it (include: false)
 - When in doubt, include it — the goal is to keep candidates, not miss them
 - Provide a short reason (max 10 words) to justify your choice
-
-Respond ONLY with a JSON array, no extra text:
-[
-  {"id": "...", "title": "...", "include": true,  "reason": "Could fit the mood"},
-  {"id": "...", "title": "...", "include": false, "reason": "Clearly incompatible energy"}
-]
 """
 
 PREPROMPT_PASS2 = """
@@ -61,12 +49,6 @@ Reject borderline cases. A focused playlist is better than an exhaustive one.
 Rules:
 - If you don't know the song, exclude it (include: false)
 - Provide a short reason (max 10 words) to justify your choice
-
-Respond ONLY with a JSON array, no extra text:
-[
-  {"id": "...", "title": "...", "include": true,  "reason": "Perfect fit for the described mood"},
-  {"id": "...", "title": "...", "include": false, "reason": "Too generic, doesn't commit to the vibe"}
-]
 """
 
 PREPROMPT_MULTI = """
@@ -79,18 +61,6 @@ Rules:
 - If you don't know the song, exclude it from all playlists (include: false)
 - Be selective per playlist — a focused playlist is better than an exhaustive one
 - Provide a short reason (max 10 words) per playlist decision
-
-Respond ONLY with a JSON array, no extra text:
-[
-  {
-    "id": "...",
-    "title": "...",
-    "decisions": {
-      "0": {"include": true,  "reason": "Downtempo, fits late-night focus"},
-      "1": {"include": false, "reason": "Too slow, breaks workout energy"}
-    }
-  }
-]
 """
 
 
