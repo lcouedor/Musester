@@ -26,7 +26,7 @@
       <h1 class="splash-title">Muse<span>ster</span></h1>
       <p id="loading-text" class="splash-status">Connexion au serveur…</p>
     </div>
-    <p class="splash-version">v4.4</p>
+    <p class="splash-version">v4.5</p>
   </div>
 
   <!-- Login -->
@@ -102,6 +102,10 @@
             </div>
 
             <div id="sync-loader" class="hidden progress-card">
+              <div class="progress-head">
+                <span></span>
+                <button class="btn-text" id="btn-sync-cancel" type="button" onclick="cancelSync()">Annuler</button>
+              </div>
               <div class="progress-wrap"><div class="progress-bar" id="sync-progress-bar"></div></div>
               <div class="status-line" id="sync-status-line"></div>
             </div>
@@ -168,7 +172,10 @@
         </div>
 
         <div id="gen-loader" class="hidden card progress-card">
-          <div class="progress-head"><span class="phase-label" id="gen-phase-label"></span></div>
+          <div class="progress-head">
+            <span class="phase-label" id="gen-phase-label"></span>
+            <button class="btn-text" id="btn-gen-cancel" type="button" onclick="cancelGenerate()">Annuler</button>
+          </div>
           <div class="progress-wrap"><div class="progress-bar" id="gen-progress-bar"></div></div>
           <div class="status-line" id="gen-status-line"></div>
         </div>

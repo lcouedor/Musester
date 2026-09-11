@@ -214,7 +214,8 @@ const SSE_IDLE_TIMEOUT_MS = 180000
 
 function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onError }) {
   const controller = new AbortController()
-  let idleTimer = null
+  let idleTimer  = null
+  let cancelled  = false
   const armIdleTimer = () => {
     clearTimeout(idleTimer)
     idleTimer = setTimeout(() => controller.abort(), SSE_IDLE_TIMEOUT_MS)
@@ -259,8 +260,16 @@ function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onErr
     clearTimeout(idleTimer)
   }).catch(e => {
     clearTimeout(idleTimer)
+    // Une annulation volontaire (bouton "Annuler") passe aussi par AbortError,
+    // mais l'appelant gère déjà sa propre remise à zéro de l'UI dans ce cas —
+    // pas la peine (et trompeur) de la lui re-signaler comme une erreur réseau.
+    if (cancelled) return
     onError(e.name === 'AbortError' ? 'Connexion perdue avec le serveur — réessaie.' : e.message)
   })
+
+  return {
+    cancel: () => { cancelled = true; clearTimeout(idleTimer); controller.abort() },
+  }
 }
 
 // ── Playlist tabs (Générer) ─────────────────────────────────────────────
@@ -505,6 +514,20 @@ function _renderRecap() {
 }
 
 // ── Generate ─────────────────────────────────────────────────────────────
+let _genSSE = null
+
+function cancelGenerate() {
+  if (!_genSSE) return
+  _genSSE.cancel()
+  _genSSE = null
+  document.getElementById('gen-loader').classList.add('hidden')
+  document.getElementById('gen-progress-bar').className = 'progress-bar'
+  const btn = document.getElementById('btn-generate')
+  btn.disabled    = false
+  btn.textContent = 'Générer'
+  toast('Génération annulée', 'ok')
+}
+
 function generate() {
   const sourceId  = document.getElementById('source-id').value.trim()
   const multiPass = document.getElementById('toggle-multipass').checked
@@ -546,7 +569,7 @@ function generate() {
   statusEl.textContent  = 'Connexion…'
   phaseEl.textContent   = ''
 
-  runSSE({
+  _genSSE = runSSE({
     url:  `${API}/generate`,
     body: { source_id: sourceId, playlists, multi_pass: multiPass },
 
@@ -561,6 +584,7 @@ function generate() {
     },
 
     onDone: data => {
+      _genSSE = null
       loader.classList.add('hidden')
       btn.disabled    = false
       btn.textContent = 'Générer'
@@ -575,6 +599,7 @@ function generate() {
     },
 
     onError: err => {
+      _genSSE = null
       progressEl.className = 'progress-bar'
       loader.classList.add('hidden')
       btn.disabled          = false
@@ -668,6 +693,20 @@ function updateSyncTargetInfo() {
 }
 
 // ── Sync ─────────────────────────────────────────────────────────────────
+let _syncSSE = null
+
+function cancelSync() {
+  if (!_syncSSE) return
+  _syncSSE.cancel()
+  _syncSSE = null
+  document.getElementById('sync-loader').classList.add('hidden')
+  document.getElementById('sync-progress-bar').className = 'progress-bar'
+  const btn = document.getElementById('btn-sync')
+  btn.disabled    = false
+  btn.textContent = 'Synchroniser'
+  toast('Synchronisation annulée', 'ok')
+}
+
 function sync() {
   const sourceId    = document.getElementById('sync-source-id').value.trim()
   const destructive = document.getElementById('toggle-destructive').checked
@@ -689,7 +728,7 @@ function sync() {
   progressEl.className  = 'progress-bar indeterminate'
   statusEl.textContent  = 'Connexion…'
 
-  runSSE({
+  _syncSSE = runSSE({
     url:  `${API}/sync`,
     body: {
       source_id:           sourceId,
@@ -702,6 +741,7 @@ function sync() {
       progressEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
     },
     onDone: data => {
+      _syncSSE = null
       loader.classList.add('hidden')
       btn.disabled    = false
       btn.textContent = 'Synchroniser'
@@ -713,6 +753,7 @@ function sync() {
       loadHistory()
     },
     onError: err => {
+      _syncSSE = null
       progressEl.className = 'progress-bar'
       loader.classList.add('hidden')
       btn.disabled          = false
@@ -789,7 +830,10 @@ async function loadPlaylists() {
         </div>
         <div class="pi-progress hidden progress-card" id="pi-progress-${p.id}">
           <div class="progress-wrap"><div class="progress-bar" id="pi-progress-bar-${p.id}"></div></div>
-          <div class="status-line" id="pi-status-${p.id}"></div>
+          <div class="progress-head">
+            <div class="status-line" id="pi-status-${p.id}"></div>
+            <button class="btn-text" id="pi-cancel-${p.id}" type="button">Annuler</button>
+          </div>
         </div>
         <div class="pi-edit" id="pi-edit-${p.id}">
           <div class="field" id="pi-field-${p.id}">
@@ -803,6 +847,7 @@ async function loadPlaylists() {
           </div>
         </div>`
       el.querySelector(`#pi-refilter-${p.id}`).addEventListener('click', e => { e.stopPropagation(); refilterPlaylist(p.id, p.name) })
+      el.querySelector(`#pi-cancel-${p.id}`).addEventListener('click', e => { e.stopPropagation(); cancelRefilter(p.id) })
       el.querySelector(`#pi-edit-btn-${p.id}`).addEventListener('click', e => { e.stopPropagation(); toggleEditPrompt(p.id) })
       el.querySelector('[data-action="save"]').addEventListener('click', e => { e.stopPropagation(); savePrompt(p.id) })
       el.querySelector('[data-action="cancel"]').addEventListener('click', e => { e.stopPropagation(); toggleEditPrompt(p.id) })
@@ -816,7 +861,7 @@ async function loadPlaylists() {
     // côté front), donc on réaffiche l'état "actif" de tous ceux en vol après
     // avoir reconstruit la liste, sans quoi leur barre resterait figée sur
     // des noeuds DOM qui viennent d'être remplacés.
-    _activeRefilters.forEach(id => setRefilterUI(id, true))
+    _activeRefilters.forEach((sse, id) => setRefilterUI(id, true))
   } catch {
     container.innerHTML = '<span class="muted-note">Erreur de chargement</span>'
   }
@@ -827,7 +872,9 @@ async function loadPlaylists() {
 // autres. Le seul plafond réel est côté serveur : gunicorn tourne avec 2
 // workers en prod, donc au-delà de 2 en vol simultanément, les suivants
 // patientent en file avant de démarrer plutôt que d'échouer.
-const _activeRefilters = new Set()
+// Map plutôt que Set : il faut pouvoir retrouver le handle SSE d'une playlist
+// précise pour l'annuler individuellement sans toucher aux autres en vol.
+const _activeRefilters = new Map()
 
 function setRefilterUI(id, active) {
   const btn        = document.getElementById(`pi-refilter-${id}`)
@@ -841,10 +888,9 @@ function setRefilterUI(id, active) {
 }
 
 async function refilterPlaylist(id, name) {
-  _activeRefilters.add(id)
   setRefilterUI(id, true)
 
-  runSSE({
+  const sse = runSSE({
     url:  `${API}/playlists/${id}/refilter`,
     body: {},
     onStatus: msg => {
@@ -870,6 +916,16 @@ async function refilterPlaylist(id, name) {
       toast(err, 'err')
     },
   })
+  _activeRefilters.set(id, sse)
+}
+
+function cancelRefilter(id) {
+  const sse = _activeRefilters.get(id)
+  if (!sse) return
+  sse.cancel()
+  _activeRefilters.delete(id)
+  setRefilterUI(id, false)
+  toast('Ré-filtrage annulé', 'ok')
 }
 
 function toggleEditPrompt(id) {
