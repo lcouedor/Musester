@@ -13,6 +13,7 @@ from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PA
 from services.auth import (
     save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source, save_sync,
 )
+from services import jobs as _jobs
 
 logger      = logging.getLogger(__name__)
 _classifier = ClassifierService()
@@ -54,17 +55,22 @@ HEARTBEAT_SECONDS = 8
 # à écarter sans y regarder à deux fois.
 HARD_REJECT_BELOW = 0.15
 
-def _wait_with_heartbeat(futs: dict, heartbeat_every: float = HEARTBEAT_SECONDS):
+def _wait_with_heartbeat(futs: dict, job_id: str = None, heartbeat_every: float = HEARTBEAT_SECONDS):
     """Comme as_completed(futs), mais émet aussi ('heartbeat', None) toutes
-    les `heartbeat_every` secondes tant qu'aucun lot n'a terminé. Un lot GPT
-    lent à répondre (retry, requête qui traîne) ne produisait plus aucun
-    événement SSE pendant toute sa durée — le seul signal visible arrivait à
-    la complétion du lot suivant, potentiellement plusieurs minutes plus
-    tard, ce qui a déjà déclenché le timeout d'inactivité de 3 min côté
-    client (constaté en usage réel) alors que le serveur travaillait
-    toujours activement en arrière-plan."""
+    les `heartbeat_every` secondes tant qu'aucun lot n'a terminé — ça donne
+    au job un point régulier pour vérifier une éventuelle annulation, et ça
+    tient le statut du job à jour pour qui le consulte (poll) même quand
+    aucun lot n'a encore fini.
+
+    Si `job_id` est annulé entre deux lots, yield ('cancelled', None) et
+    s'arrête — les lots déjà lancés dans le ThreadPoolExecutor tournent à
+    leur terme en arrière-plan (Python ne tue pas un thread en cours), mais
+    on arrête d'en attendre le résultat et l'appelant peut couper court."""
     pending = set(futs)
     while pending:
+        if job_id and _jobs.is_cancelled(job_id):
+            yield ("cancelled", None)
+            return
         done, pending = wait(pending, timeout=heartbeat_every, return_when=FIRST_COMPLETED)
         if not done:
             yield ("heartbeat", None)
@@ -96,6 +102,7 @@ def generate_playlist_stream(
     user_id: str,
     anchors: list[dict] = None,
     multi_pass: bool = True,
+    job_id: str = None,
 ) -> Generator[str, None, None]:
 
     import config as _cfg
@@ -180,10 +187,13 @@ def generate_playlist_stream(
                 futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1): i
                         for i, b in enumerate(pass1_batches)}
                 done = 0
-                for kind, fut in _wait_with_heartbeat(futs):
+                for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
                     if kind == "heartbeat":
                         yield _event("status", message=f"Passe 1 — toujours en cours… ({done}/{total_p1} lots terminés)")
                         continue
+                    if kind == "cancelled":
+                        yield _event("error", message="Génération annulée")
+                        return
                     raw_p1[futs[fut]] = fut.result()
                     done += 1
                     yield _event("progress", done=done, total=total_p1, phase=1)
@@ -217,10 +227,13 @@ def generate_playlist_stream(
                 futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anch, languages): i
                         for i, b in enumerate(pass2_batches)}
                 done = 0
-                for kind, fut in _wait_with_heartbeat(futs):
+                for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
                     if kind == "heartbeat":
                         yield _event("status", message=f"Passe 2 — toujours en cours… ({done}/{total_p2} lots terminés)")
                         continue
+                    if kind == "cancelled":
+                        yield _event("error", message="Génération annulée")
+                        return
                     raw_p2[futs[fut]] = fut.result()
                     done += 1
                     yield _event("progress", done=done, total=total_p2, phase=2)
@@ -253,10 +266,13 @@ def generate_playlist_stream(
             futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anch, languages): i
                     for i, b in enumerate(batches)}
             done = 0
-            for kind, fut in _wait_with_heartbeat(futs):
+            for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
                 if kind == "heartbeat":
                     yield _event("status", message=f"Toujours en cours… ({done}/{total_b} lots terminés)")
                     continue
+                if kind == "cancelled":
+                    yield _event("error", message="Génération annulée")
+                    return
                 raw_sp[futs[fut]] = fut.result()
                 done += 1
                 yield _event("progress", done=done, total=total_b)
@@ -298,6 +314,7 @@ def generate_multi_playlist_stream(
     playlists: list[dict],
     user_id: str,
     multi_pass: bool = False,
+    job_id: str = None,
 ) -> Generator[str, None, None]:
     """
     playlists: [{'name': str, 'prompt': str, 'anchors': list[dict]}]
@@ -341,10 +358,13 @@ def generate_multi_playlist_stream(
             futs = {ex.submit(_classifier._process_batch, combined_prompt, b, i, total_p1, PREPROMPT_PASS1): i
                     for i, b in enumerate(pass1_batches)}
             done = 0
-            for kind, fut in _wait_with_heartbeat(futs):
+            for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
                 if kind == "heartbeat":
                     yield _event("status", message=f"Passe 1 — toujours en cours… ({done}/{total_p1} lots terminés)")
                     continue
+                if kind == "cancelled":
+                    yield _event("error", message="Génération annulée")
+                    return
                 raw_p1[futs[fut]] = fut.result()
                 done += 1
                 yield _event("progress", done=done, total=total_p1, phase=1)
@@ -382,10 +402,13 @@ def generate_multi_playlist_stream(
         futs = {ex.submit(_classifier._process_batch_multi, playlists_spec, b, i, total_b): i
                 for i, b in enumerate(batches)}
         done = 0
-        for kind, fut in _wait_with_heartbeat(futs):
+        for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
             if kind == "heartbeat":
                 yield _event("status", message=f"Toujours en cours… ({done}/{total_b} lots terminés)")
                 continue
+            if kind == "cancelled":
+                yield _event("error", message="Génération annulée")
+                return
             raw_by_idx[futs[fut]] = fut.result()
             done += 1
             evt = {"done": done, "total": total_b}

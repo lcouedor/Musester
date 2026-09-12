@@ -3,7 +3,14 @@ services:
     name: musester
     runtime: python
     buildCommand: pip install -r api/requirements.txt
-    startCommand: gunicorn --chdir api --bind 0.0.0.0:$PORT --workers 2 --timeout 300 app:app
+    # 1 process (gthread) + plusieurs threads plutôt que 2 process (sync) : le
+    # registre des jobs de génération (api/services/jobs.py) vit en mémoire
+    # pour rester simple, donc doit être visible par TOUTE requête qui le
+    # consulte — avec 2 process séparés, un job créé sur l'un serait invisible
+    # pour un poll qui atterrit sur l'autre. Les threads d'un même process
+    # partagent la mémoire, donc plus de souci, tout en gardant de la vraie
+    # concurrence pour les requêtes HTTP elles-mêmes.
+    startCommand: gunicorn --chdir api --bind 0.0.0.0:$PORT --worker-class gthread --workers 1 --threads 8 --timeout 300 app:app
     envVars:
       - key: FLASK_ENV
         value: production

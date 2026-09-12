@@ -1,6 +1,7 @@
 import logging
 import os
 import secrets
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
@@ -13,6 +14,7 @@ from core.playlist import (
     generate_playlist_stream, generate_multi_playlist_stream, sync_all_playlists_stream,
     refilter_playlist_stream, source_error_message,
 )
+from services import jobs
 from services.auth import (
     get_auth_url, exchange_code, save_token, get_valid_token,
     create_session_token, get_user_id_by_session_token, clear_session_token,
@@ -157,8 +159,75 @@ def me():
 
 
 # ---------------------------------------------------------------------------
-# SSE — Generate
+# Generate — job en arrière-plan, suivi par poll
 # ---------------------------------------------------------------------------
+# Ancienne version : un seul flux SSE tenu ouvert du début à la fin, avec la
+# création de playlist + sauvegarde en historique déclenchées seulement une
+# fois ce flux épuisé. Ça marche tant que la connexion tient — mais sur
+# mobile, verrouiller le téléphone suffit à couper une requête réseau en
+# arrière-plan (constaté en usage réel), et la génération s'arrêtait alors
+# net à son point d'exécution : aucune playlist créée, malgré tout le travail
+# GPT déjà payé et fait. Le travail tourne maintenant dans un thread détaché
+# de la requête HTTP — la couper (verrouillage, connexion perdue, onglet en
+# arrière-plan) ne l'interrompt plus, le front n'a plus qu'à repasser prendre
+# le résultat par poll quand il veut.
+
+def _run_generate_job(job_id, access_token, user_id, pid, playlists, multi_pass):
+    import json as _json
+    start = time.time()
+    try:
+        if len(playlists) == 1:
+            pl = playlists[0]
+            stream = generate_playlist_stream(
+                access_token, pid, pl["name"], pl["prompt"], user_id,
+                anchors=pl.get("anchors", []), multi_pass=multi_pass, job_id=job_id,
+            )
+        else:
+            stream = generate_multi_playlist_stream(
+                access_token, pid, playlists, user_id, multi_pass=multi_pass, job_id=job_id,
+            )
+
+        all_results = []
+        for event in stream:
+            try:
+                data = _json.loads(event.removeprefix("data: ").strip())
+            except Exception:
+                continue
+            kind = data.get("kind")
+            if kind == "status":
+                jobs.update_job(job_id, message=data.get("message", ""))
+            elif kind == "progress":
+                jobs.update_job(job_id, progress={
+                    "done": data.get("done"), "total": data.get("total"), "phase": data.get("phase"),
+                })
+            elif kind == "error":
+                jobs.update_job(job_id, status="error", error=data.get("message") or "Erreur inconnue")
+                return
+            elif kind == "done":
+                all_results = data.get("results", [])
+
+        for pl_result in all_results:
+            pidx    = pl_result.get("playlist_idx", 0)
+            pl_spec = playlists[pidx] if pidx < len(playlists) else playlists[0]
+            if pl_result.get("playlist_id"):
+                save_generate(user_id, {
+                    "playlist_id":    pl_result["playlist_id"],
+                    "playlist_name":  pl_result["playlist_name"],
+                    "prompt":         pl_spec.get("prompt", ""),
+                    "checked_songs":  pl_result.get("checked_songs", 0),
+                    "selected_songs": pl_result.get("selected_songs", 0),
+                    "execution_time": _elapsed(start),
+                    "decisions":      pl_result.get("decisions"),
+                })
+
+        slim = [{k: v for k, v in r.items() if k != "decisions"} for r in all_results]
+        jobs.update_job(job_id, status="done", result={"results": slim})
+    except Exception:
+        # Un job qui plante sans mettre à jour son statut resterait "running"
+        # pour toujours du point de vue de qui le poll — pas de bug silencieux ici.
+        logger.exception("Generate job %s failed", job_id)
+        jobs.update_job(job_id, status="error", error="Erreur interne pendant la génération")
+
 
 @bp.route("/generate", methods=["POST"])
 @require_auth
@@ -179,57 +248,32 @@ def generate(access_token: str):
             return _err(f"Playlist {i+1} : name and prompt are required")
 
     user_id = _current_user_id()
-    start   = time.time()
     pid     = _parse_id(source_id)
+    job_id  = jobs.create_job()
 
-    if len(playlists) == 1:
-        pl = playlists[0]
-        def stream_fn():
-            return generate_playlist_stream(
-                access_token, pid, pl["name"], pl["prompt"], user_id,
-                anchors=pl.get("anchors", []), multi_pass=multi_pass,
-            )
-    else:
-        def stream_fn():
-            return generate_multi_playlist_stream(access_token, pid, playlists, user_id, multi_pass=multi_pass)
+    threading.Thread(
+        target=_run_generate_job,
+        args=(job_id, access_token, user_id, pid, playlists, multi_pass),
+        daemon=True,
+    ).start()
 
-    def stream():
-        import json as _json
-        all_results = []
-        for event in stream_fn():
-            try:
-                data = _json.loads(event.removeprefix("data: ").strip())
-            except Exception:
-                data = None
+    return _ok({"job_id": job_id})
 
-            if data and data.get("kind") == "done":
-                all_results = data.get("results", [])
-                # Le détail des décisions (GPT) reste côté serveur pour la persistance —
-                # inutile de l'envoyer au client ici, il est récupéré à la demande via /history/<id>/decisions.
-                slim = [{k: v for k, v in r.items() if k != "decisions"} for r in all_results]
-                yield f"data: {_json.dumps({'kind': 'done', 'results': slim})}\n\n"
-            else:
-                yield event
 
-        for pl_result in all_results:
-            pidx    = pl_result.get("playlist_idx", 0)
-            pl_spec = playlists[pidx] if pidx < len(playlists) else playlists[0]
-            if pl_result.get("playlist_id"):
-                save_generate(user_id, {
-                    "playlist_id":    pl_result["playlist_id"],
-                    "playlist_name":  pl_result["playlist_name"],
-                    "prompt":         pl_spec.get("prompt", ""),
-                    "checked_songs":  pl_result.get("checked_songs", 0),
-                    "selected_songs": pl_result.get("selected_songs", 0),
-                    "execution_time": _elapsed(start),
-                    "decisions":      pl_result.get("decisions"),
-                })
+@bp.route("/generate/<job_id>", methods=["GET"])
+@require_auth
+def generate_status(access_token: str, job_id: str):
+    job = jobs.get_job(job_id)
+    if job is None:
+        return _err("Job introuvable ou expiré", 404)
+    return _ok(job)
 
-    return Response(
-        stream_with_context(stream()),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+
+@bp.route("/generate/<job_id>", methods=["DELETE"])
+@require_auth
+def generate_cancel(access_token: str, job_id: str):
+    jobs.cancel_job(job_id)
+    return _ok({"cancelled": True})
 
 
 # ---------------------------------------------------------------------------

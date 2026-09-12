@@ -272,6 +272,62 @@ function runSSE({ url, body, onStatus, onProgress, onPlaylistDone, onDone, onErr
   }
 }
 
+// runSSE tient une connexion ouverte pendant toute la durée de l'opération —
+// sur mobile, verrouiller le téléphone suffit à la couper (constaté en usage
+// réel : une génération de plusieurs minutes qui échouait net au verrouillage,
+// alors que le serveur continuait de travailler dans le vide). runJob évite
+// ça : la requête de départ ne fait que lancer un job côté serveur et revient
+// tout de suite avec un id, le vrai travail tourne dans un thread détaché de
+// la requête HTTP, et le front se contente d'aller consulter l'état de ce job
+// par poll — un poll raté ou en retard (verrouillage, onglet en arrière-plan)
+// n'interrompt jamais le job, il reprend juste au poll suivant, y compris si
+// celui-ci arrive plusieurs minutes plus tard.
+function runJob({ startUrl, statusUrl, body, onStatus, onProgress, onDone, onError, pollMs = 1500 }) {
+  let cancelled = false
+  let jobId     = null
+  let pollTimer = null
+
+  fetch(startUrl, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body || {}),
+  })
+    .then(async res => {
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.data?.job_id) { onError(data.error || `Erreur ${res.status}`); return }
+      jobId = data.data.job_id
+      if (!cancelled) poll()
+    })
+    .catch(e => onError(e.message))
+
+  function poll() {
+    fetch(statusUrl(jobId), { headers: authHeaders() })
+      .then(res => res.json())
+      .then(data => {
+        if (cancelled) return
+        const job = data.data
+        if (!job) { onError(data.error || 'Job introuvable'); return }
+        if (job.message && onStatus) onStatus(job.message)
+        if (job.progress && onProgress) onProgress(job.progress.done, job.progress.total, job.progress.phase)
+        if (job.status === 'done')  { onDone(job.result); return }
+        if (job.status === 'error') { onError(job.error || 'Erreur inconnue'); return }
+        pollTimer = setTimeout(poll, pollMs)
+      })
+      // Un poll qui échoue (blip réseau, tab qui reprend la main) n'est pas
+      // fatal — contrairement à runSSE, il n'y a pas de connexion à perdre,
+      // juste une lecture à refaire au prochain tick.
+      .catch(() => { if (!cancelled) pollTimer = setTimeout(poll, pollMs) })
+  }
+
+  return {
+    cancel: () => {
+      cancelled = true
+      clearTimeout(pollTimer)
+      if (jobId) fetch(statusUrl(jobId), { method: 'DELETE', headers: authHeaders() }).catch(() => {})
+    },
+  }
+}
+
 // ── Playlist tabs (Générer) ─────────────────────────────────────────────
 let _playlistSlots   = [{ id: 0, name: '', prompt: '', anchors: new Map() }]
 let _nextSlotId      = 1
@@ -569,8 +625,9 @@ function generate() {
   statusEl.textContent  = 'Connexion…'
   phaseEl.textContent   = ''
 
-  _genSSE = runSSE({
-    url:  `${API}/generate`,
+  _genSSE = runJob({
+    startUrl:  `${API}/generate`,
+    statusUrl: jobId => `${API}/generate/${jobId}`,
     body: { source_id: sourceId, playlists, multi_pass: multiPass },
 
     onStatus: msg => { statusEl.textContent = msg },
