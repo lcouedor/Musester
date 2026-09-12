@@ -40,11 +40,19 @@ Rules:
 """
 
 PREPROMPT_PASS2 = """
-You are a music curator doing a final, selective pass on pre-filtered candidates.
+You are a music curator doing the final, selective pass for a playlist.
 
-These songs have already passed a broad first filter — they are plausible candidates.
-Now be SELECTIVE: only include songs that genuinely and strongly match the listening context.
-Reject borderline cases. A focused playlist is better than an exhaustive one.
+Base your decision on:
+- Energy level and tempo
+- Mood and emotional tone
+- Genre and artist's typical style
+- Lyrical themes (if known)
+- How well it fits alongside other songs that match the description
+
+Be SELECTIVE: only include songs that genuinely and strongly match the listening context.
+Reject borderline cases — do not assume a song belongs just because it reached this stage;
+evaluate it as strictly as if you were seeing it for the first time.
+A focused playlist is better than an exhaustive one.
 
 Rules:
 - If you don't know the song, exclude it (include: false)
