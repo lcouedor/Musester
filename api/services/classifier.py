@@ -19,7 +19,11 @@ Base your decision on:
 - Mood and emotional tone
 - Genre and artist's typical style
 - Lyrical themes (if known)
-- How well it fits alongside other songs that match the description
+
+Judge each song purely against the listening context above — never against the
+other songs listed below, which are just an arbitrary chunk of a much larger
+list and differ between runs. A song's inclusion must not depend on which
+other songs happen to be evaluated alongside it in this particular batch.
 
 Rules:
 - If you don't know the song, exclude it (include: false)
@@ -47,7 +51,11 @@ Base your decision on:
 - Mood and emotional tone
 - Genre and artist's typical style
 - Lyrical themes (if known)
-- How well it fits alongside other songs that match the description
+
+Judge each song purely against the listening context — never against the other
+songs listed below, which are just an arbitrary chunk of a much larger list
+and differ between runs. A song's inclusion must not depend on which other
+songs happen to be evaluated alongside it in this particular batch.
 
 Be SELECTIVE: only include songs that genuinely and strongly match the listening context.
 Reject borderline cases — do not assume a song belongs just because it reached this stage;
