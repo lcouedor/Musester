@@ -3,10 +3,13 @@ import logging
 import os
 import time
 import uuid
+from concurrent.futures import FIRST_COMPLETED, wait
 
 from db import db_conn, PH
 
 logger = logging.getLogger(__name__)
+
+HEARTBEAT_SECONDS = 8
 
 # Dans history.db (SQLite) / Neon (Postgres) — pas en mémoire. Un registre en
 # mémoire ne survit pas à un redémarrage du process (déploiement, restart
@@ -93,6 +96,37 @@ def is_cancelled(job_id: str | None) -> bool:
         return False
     job = get_job(job_id)
     return bool(job and job["cancelled"])
+
+
+def wait_with_heartbeat(futs: dict, job_id: str = None, heartbeat_every: float = HEARTBEAT_SECONDS):
+    """Comme as_completed(futs), mais émet aussi ('heartbeat', None) toutes
+    les `heartbeat_every` secondes tant qu'aucun lot n'a terminé — ça donne
+    au job un point régulier pour vérifier une éventuelle annulation, et ça
+    tient le statut du job à jour pour qui le consulte (poll) même quand
+    aucun lot n'a encore fini.
+
+    Partagé entre core/playlist.py (lots GPT) et core/scoring.py (similarité
+    aux ancres, détection de langue) — sans ça, annuler pendant ces deux
+    étapes ne faisait rien tant qu'elles n'étaient pas allées à leur terme :
+    la génération tourne dans un thread détaché (voir routes._run_generate_job),
+    rien d'externe ne l'interrompt, seul un check explicite de is_cancelled()
+    peut la faire s'arrêter en cours de route.
+
+    Si `job_id` est annulé entre deux lots, yield ('cancelled', None) et
+    s'arrête — les lots déjà lancés dans le ThreadPoolExecutor tournent à
+    leur terme en arrière-plan (Python ne tue pas un thread en cours), mais
+    on arrête d'en attendre le résultat et l'appelant peut couper court."""
+    pending = set(futs)
+    while pending:
+        if job_id and is_cancelled(job_id):
+            yield ("cancelled", None)
+            return
+        done, pending = wait(pending, timeout=heartbeat_every, return_when=FIRST_COMPLETED)
+        if not done:
+            yield ("heartbeat", None)
+            continue
+        for fut in done:
+            yield ("done", fut)
 
 
 def _cleanup_stale():

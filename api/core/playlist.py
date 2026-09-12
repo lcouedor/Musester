@@ -1,13 +1,13 @@
 import json
 import logging
 import os
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor
 from typing import Generator
 
 from spotipy.exceptions import SpotifyException
 
 from core.models import Track, Decision
-from core.scoring import score_against_anchors, fetch_languages
+from core.scoring import score_against_anchors, fetch_languages, prompt_cares_about_language
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PASS2
 from services.auth import (
@@ -43,8 +43,6 @@ def _resolve_anchors(anchors_raw: list[dict], track_map: dict) -> list[Track]:
     return result
 
 
-HEARTBEAT_SECONDS = 8
-
 # En dessous de ce score, un faux négatif (un morceau pertinent écarté à
 # tort) est jugé assez improbable pour justifier un rejet direct plutôt que
 # de payer GPT dessus — contrairement à la zone entre ce plancher et le
@@ -55,28 +53,7 @@ HEARTBEAT_SECONDS = 8
 # à écarter sans y regarder à deux fois.
 HARD_REJECT_BELOW = 0.15
 
-def _wait_with_heartbeat(futs: dict, job_id: str = None, heartbeat_every: float = HEARTBEAT_SECONDS):
-    """Comme as_completed(futs), mais émet aussi ('heartbeat', None) toutes
-    les `heartbeat_every` secondes tant qu'aucun lot n'a terminé — ça donne
-    au job un point régulier pour vérifier une éventuelle annulation, et ça
-    tient le statut du job à jour pour qui le consulte (poll) même quand
-    aucun lot n'a encore fini.
-
-    Si `job_id` est annulé entre deux lots, yield ('cancelled', None) et
-    s'arrête — les lots déjà lancés dans le ThreadPoolExecutor tournent à
-    leur terme en arrière-plan (Python ne tue pas un thread en cours), mais
-    on arrête d'en attendre le résultat et l'appelant peut couper court."""
-    pending = set(futs)
-    while pending:
-        if job_id and _jobs.is_cancelled(job_id):
-            yield ("cancelled", None)
-            return
-        done, pending = wait(pending, timeout=heartbeat_every, return_when=FIRST_COMPLETED)
-        if not done:
-            yield ("heartbeat", None)
-            continue
-        for fut in done:
-            yield ("done", fut)
+_wait_with_heartbeat = _jobs.wait_with_heartbeat
 
 
 def _model_for(total_batches: int) -> str:
@@ -151,13 +128,19 @@ def generate_playlist_stream(
     if anchor_tracks:
         yield _event("status", message="Calcul de similarité aux ancres…")
         try:
-            scoring = None
-            for kind, *rest in score_against_anchors(tracks, prompt, anchor_tracks):
+            scoring   = None
+            cancelled = False
+            for kind, *rest in score_against_anchors(tracks, prompt, anchor_tracks, job_id=job_id):
                 if kind == "progress":
                     done, total = rest
                     yield _event("progress", done=done, total=total)
+                elif kind == "cancelled":
+                    cancelled = True
                 else:
                     scoring = rest[0]
+            if cancelled:
+                yield _event("error", message="Génération annulée")
+                return
             embedding_approved = [t for t in tracks if scoring.passes(t.id)]
             approved_ids = {a.id for a in embedding_approved}
 
@@ -199,8 +182,9 @@ def generate_playlist_stream(
 
             raw_p1: dict[int, list] = {}
             model_p1 = _model_for(total_p1)
+            anch_p1  = anchor_tracks or None
             with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1, None, None, model_p1): i
+                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1, anch_p1, None, model_p1): i
                         for i, b in enumerate(pass1_batches)}
                 done = 0
                 for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -228,8 +212,18 @@ def generate_playlist_stream(
 
         # --- Pass 2 : selective filter ---
         if candidates:
-            yield _event("status", message="Détection de la langue chantée…")
-            languages = fetch_languages(candidates)
+            languages = {}
+            if prompt_cares_about_language(prompt):
+                yield _event("status", message="Détection de la langue chantée…")
+                for kind, *rest in fetch_languages(candidates, job_id=job_id):
+                    if kind == "progress":
+                        done, total = rest
+                        yield _event("progress", done=done, total=total, phase="lang")
+                    elif kind == "cancelled":
+                        yield _event("error", message="Génération annulée")
+                        return
+                    else:
+                        languages = rest[0]
 
             pass2_batches = [candidates[i:i+_cfg.BATCH_SIZE] for i in range(0, len(candidates), _cfg.BATCH_SIZE)]
             total_p2      = len(pass2_batches)
@@ -268,8 +262,18 @@ def generate_playlist_stream(
         # --- Single pass (pré-filtré par similarité si des ancres sont fournies) ---
         working = embedding_approved + pass1_pool if anchor_tracks else tracks
 
-        yield _event("status", message="Détection de la langue chantée…")
-        languages = fetch_languages(working)
+        languages = {}
+        if prompt_cares_about_language(prompt):
+            yield _event("status", message="Détection de la langue chantée…")
+            for kind, *rest in fetch_languages(working, job_id=job_id):
+                if kind == "progress":
+                    done, total = rest
+                    yield _event("progress", done=done, total=total, phase="lang")
+                elif kind == "cancelled":
+                    yield _event("error", message="Génération annulée")
+                    return
+                else:
+                    languages = rest[0]
 
         batches = [working[i:i+_cfg.BATCH_SIZE] for i in range(0, len(working), _cfg.BATCH_SIZE)]
         total_b = len(batches)
@@ -363,7 +367,21 @@ def generate_multi_playlist_stream(
 
     if multi_pass:
         # --- Passe 1 : filtre large sur une description combinée ---
-        combined_prompt = " / ".join(f'[{spec["name"]}] {spec["prompt"]}' for spec in playlists_spec)
+        # Les ancres sont propres à CHAQUE playlist — les passer telles quelles
+        # au paramètre "anchors" de _process_batch (pensé pour une seule
+        # playlist à la fois) mélangerait des morceaux de référence de
+        # contextes différents et parfois contradictoires sous un seul jugement
+        # "ça va avec toutes ces ancres". On les inline donc directement dans
+        # le texte, scopées à leur propre playlist, pour que le filtre large
+        # en tienne compte dès le départ sans ce risque de confusion.
+        def _describe(spec: dict) -> str:
+            desc = f'[{spec["name"]}] {spec["prompt"]}'
+            if spec["anchors"]:
+                examples = ", ".join(f'"{a.title}" by {a.artists}' for a in spec["anchors"])
+                desc += f" (reference tracks for this playlist: {examples})"
+            return desc
+
+        combined_prompt = " / ".join(_describe(spec) for spec in playlists_spec)
 
         pass1_batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
         total_p1      = len(pass1_batches)
@@ -683,8 +701,15 @@ def refilter_playlist_stream(
     anchor_track = [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
                      for a in raw_anchors] or None
 
-    yield _event("status", message="Détection de la langue chantée…")
-    languages = fetch_languages(tracks)
+    languages = {}
+    if prompt_cares_about_language(prompt):
+        yield _event("status", message="Détection de la langue chantée…")
+        for kind, *rest in fetch_languages(tracks):
+            if kind == "progress":
+                done, total = rest
+                yield _event("progress", done=done, total=total, phase="lang")
+            else:
+                languages = rest[0]
 
     batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
     total_b = len(batches)

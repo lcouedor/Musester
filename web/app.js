@@ -637,6 +637,7 @@ function generate() {
       progressEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
       if (phase === 1) phaseEl.textContent = 'Passe 1 — filtrage large'
       else if (phase === 2) phaseEl.textContent = 'Passe 2 — sélection fine'
+      else if (phase === 'lang') phaseEl.textContent = `Détection de la langue chantée — ${done}/${total}`
       else phaseEl.textContent = ''
     },
 
@@ -954,11 +955,16 @@ async function refilterPlaylist(id, name) {
       const statusEl = document.getElementById(`pi-status-${id}`)
       if (statusEl) statusEl.textContent = msg
     },
-    onProgress: (done, total) => {
+    onProgress: (done, total, phase) => {
       const barEl = document.getElementById(`pi-progress-bar-${id}`)
-      if (!barEl) return
-      barEl.className   = 'progress-bar'
-      barEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
+      if (barEl) {
+        barEl.className   = 'progress-bar'
+        barEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
+      }
+      if (phase === 'lang') {
+        const statusEl = document.getElementById(`pi-status-${id}`)
+        if (statusEl) statusEl.textContent = `Détection de la langue chantée — ${done}/${total}`
+      }
     },
     onDone: data => {
       _activeRefilters.delete(id)

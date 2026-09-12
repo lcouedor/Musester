@@ -8,6 +8,8 @@ from flask_cors import CORS
 from routes import bp
 from services.auth import init_db
 from services.jobs import init_jobs_table
+from services.track_cache import init_track_cache_table
+from services.cleanup import run_startup_sweep
 import config
 
 logging.basicConfig(
@@ -47,6 +49,8 @@ def create_app() -> Flask:
     app.register_blueprint(bp)
     init_db()
     init_jobs_table()
+    init_track_cache_table()
+    run_startup_sweep()
 
     @app.route('/')
     def index():

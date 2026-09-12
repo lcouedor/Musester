@@ -1,13 +1,13 @@
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 from openai import OpenAI
 
 import config
 from core.models import Track
 from services.embeddings import embed_texts, cosine_similarity, centroid
-from services.lastfm import get_track_tags
-from services.lyrics import get_lyrics, detect_language
+from services import track_cache
+from services import jobs as _jobs
 
 logger = logging.getLogger(__name__)
 _client = OpenAI(api_key=config.GPT_KEY, timeout=45)
@@ -35,8 +35,9 @@ def translate_to_english(text: str) -> str:
 
 def _track_profile_text(track: Track) -> str:
     primary_artist = track.artists.split('-')[0].strip()
-    tags   = get_track_tags(primary_artist, track.title)
-    lyrics = get_lyrics(primary_artist, track.title)
+    profile = track_cache.get_profile(primary_artist, track.title)
+    tags    = profile["tags"]
+    lyrics  = profile["lyrics"]
 
     if not tags and not lyrics:
         return ""
@@ -45,25 +46,74 @@ def _track_profile_text(track: Track) -> str:
     if tags:
         parts.append(f"Tags: {', '.join(tags)}.")
     if lyrics:
-        # Extrait, pas le texte complet — suffisant pour capter le thème, pas
-        # besoin de plus pour un vecteur d'embedding.
-        parts.append(f"Lyrics excerpt: {lyrics[:400].strip()}")
+        # Déjà un extrait (tronqué à la mise en cache) — suffisant pour capter
+        # le thème, pas besoin de plus pour un vecteur d'embedding.
+        parts.append(f"Lyrics excerpt: {lyrics}")
     return " ".join(parts)
 
 
-def fetch_languages(tracks: list[Track]) -> dict[str, str]:
-    """Langue réellement chantée (détectée depuis les paroles), par morceau —
-    un fait pour GPT plutôt qu'une supposition depuis la nationalité de
+def prompt_cares_about_language(prompt: str) -> bool:
+    """La détection de langue chantée coûte un appel paroles par morceau (ou
+    un hit de cache) — utile seulement si le prompt lui-même porte sur une
+    langue ("chansons en français", "rap anglophone"...). Pour un prompt
+    générique sur le mood/genre sans mention de langue, ce coût n'a aucun
+    effet sur le résultat : GPT ne reçoit jamais de consigne qui lui donnerait
+    une raison de s'en servir. Un seul appel léger, jamais en boucle —
+    toujours le modèle rapide. En cas d'échec, on suppose que oui (comportement
+    d'avant cette optimisation : ne jamais silencieusement perdre le signal)."""
+    try:
+        resp = _client.chat.completions.create(
+            model=config.GPT_MODEL_FAST,
+            messages=[
+                {"role": "system", "content": (
+                    "Does the following music listening-context description explicitly require or "
+                    "reference a specific sung/spoken language (e.g. 'French songs', 'English rap', "
+                    "'chansons en espagnol', 'K-pop')? Reply with ONLY 'true' or 'false'."
+                )},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return resp.choices[0].message.content.strip().lower().startswith("true")
+    except Exception as e:
+        logger.warning("Language-relevance check failed, defaulting to detecting language: %s", e)
+        return True
+
+
+def fetch_languages(tracks: list[Track], job_id: str = None):
+    """Générateur : yield ('progress', done, total) pendant la détection,
+    puis yield ('result', dict) une fois terminé, ou ('cancelled', None) si
+    `job_id` est annulé en cours de route — même traitement que
+    score_against_anchors, pour que l'UI affiche une vraie progression plutôt
+    qu'un statut figé pendant potentiellement plusieurs minutes, et que le
+    cancel prenne effet tout de suite plutôt qu'à la toute fin de l'étape.
+
+    Langue réellement chantée (détectée depuis les paroles), par morceau — un
+    fait pour GPT plutôt qu'une supposition depuis la nationalité de
     l'artiste (bug constaté : un artiste polonais chantant en anglais classé
     comme "polonais"). Absent du dict si paroles introuvables/indétectables."""
     def _one(track: Track) -> tuple[str, str | None]:
         primary_artist = track.artists.split('-')[0].strip()
-        lyrics = get_lyrics(primary_artist, track.title)
-        return track.id, detect_language(lyrics) if lyrics else None
+        profile = track_cache.get_profile(primary_artist, track.title)
+        return track.id, profile["language"]
 
+    total = len(tracks)
+    done  = 0
+    languages: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=8) as ex:
-        results = list(ex.map(_one, tracks))
-    return {tid: lang for tid, lang in results if lang}
+        futs = {ex.submit(_one, t): t for t in tracks}
+        for kind, fut in _jobs.wait_with_heartbeat(futs, job_id=job_id):
+            if kind == "heartbeat":
+                yield ("progress", done, total)
+                continue
+            if kind == "cancelled":
+                yield ("cancelled", None)
+                return
+            tid, lang = fut.result()
+            if lang:
+                languages[tid] = lang
+            done += 1
+            yield ("progress", done, total)
+    yield ("result", languages)
 
 
 class ScoringResult:
@@ -87,10 +137,11 @@ def _combined_score(prompt_vec: list[float], reference_vec: list[float], vec: li
     return sum(parts) / len(parts) if parts else None
 
 
-def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track]):
+def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track], job_id: str = None):
     """Générateur : yield ('progress', done, total) pendant la partie lente
     (profil Last.fm + paroles de CHAQUE morceau de la source, pas seulement
-    des candidats), puis yield ('result', ScoringResult) une fois terminé.
+    des candidats), puis yield ('result', ScoringResult) une fois terminé, ou
+    ('cancelled', None) si `job_id` est annulé en cours de route.
 
     Cette étape porte sur toute la source, pas un sous-ensemble — pour une
     grosse bibliothèque (ex. 1000+ titres likés), même à ~50ms/morceau avec
@@ -123,9 +174,15 @@ def score_against_anchors(tracks: list[Track], prompt: str, anchors: list[Track]
     with ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(_track_profile_text, t): ("track", i) for i, t in enumerate(tracks)}
         futs.update({ex.submit(_track_profile_text, a): ("anchor", i) for i, a in enumerate(anchors)})
-        for fut in as_completed(futs):
-            kind, i = futs[fut]
-            (track_profiles if kind == "track" else anchor_profiles)[i] = fut.result()
+        for kind, fut in _jobs.wait_with_heartbeat(futs, job_id=job_id):
+            if kind == "heartbeat":
+                yield ("progress", done, total)
+                continue
+            if kind == "cancelled":
+                yield ("cancelled", None)
+                return
+            profile_kind, i = futs[fut]
+            (track_profiles if profile_kind == "track" else anchor_profiles)[i] = fut.result()
             done += 1
             yield ("progress", done, total)
 
