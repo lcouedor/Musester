@@ -12,7 +12,7 @@ from flask import Blueprint, request, jsonify, redirect, session, Response, stre
 
 from core.playlist import (
     generate_playlist_stream, generate_multi_playlist_stream, sync_all_playlists_stream,
-    refilter_playlist_stream, source_error_message,
+    refilter_playlist_stream, merge_playlist_stream, source_error_message,
 )
 from services import jobs
 from services.auth import (
@@ -284,12 +284,8 @@ def generate_cancel(access_token: str, job_id: str):
 @require_auth
 def sync(access_token: str):
     body        = request.json or {}
-    source_id   = body.get("source_id")
     destructive = body.get("destructive", True)
     target_ids  = body.get("target_playlist_ids") or None
-
-    if not source_id:
-        return _err("Missing required parameter: source_id")
 
     user_id = _current_user_id()
     start   = time.time()
@@ -298,8 +294,7 @@ def sync(access_token: str):
         import json as _json
         results = {}
         for event in sync_all_playlists_stream(
-            access_token, _parse_id(source_id),
-            destructive=destructive, target_ids=target_ids,
+            access_token, destructive=destructive, target_ids=target_ids,
         ):
             try:
                 data = _json.loads(event.removeprefix("data: ").strip())
@@ -376,6 +371,7 @@ def _load_playlist_summary(spotify: SpotifyService, p: dict) -> Optional[dict]:
         "track_count": len(tracks),
         "last_sync":   last_sync,
         "cover_url":   cover_url,
+        "source_id":   get_playlist_source(pid),
     }
 
 
@@ -407,8 +403,9 @@ def playlist_anchors(access_token: str, playlist_id: str):
 @bp.route("/playlists/<playlist_id>/prompt", methods=["PUT"])
 @require_auth
 def update_prompt(access_token: str, playlist_id: str):
-    body   = request.json or {}
-    prompt = body.get("prompt")
+    body      = request.json or {}
+    prompt    = body.get("prompt")
+    new_source = (body.get("source_id") or "").strip()
 
     if not prompt:
         return _err("Missing required parameter: prompt")
@@ -419,9 +416,18 @@ def update_prompt(access_token: str, playlist_id: str):
     # écrasait silencieusement à NULL.
     anchors   = get_playlist_anchors(playlist_id) or None
     source_id = get_playlist_source(playlist_id)
+
+    if new_source:
+        parsed = _parse_id(new_source)
+        try:
+            SpotifyService(access_token).get_playlist_name(parsed)
+        except Exception as e:
+            return _err(source_error_message(new_source, e), 404)
+        source_id = parsed
+
     save_playlist_prompt(user_id, playlist_id, prompt, anchors=anchors, source_id=source_id)
     logger.info("Prompt updated for playlist '%s'", playlist_id)
-    return _ok({"playlist_id": playlist_id, "prompt": prompt})
+    return _ok({"playlist_id": playlist_id, "prompt": prompt, "source_id": source_id})
 
 
 @bp.route("/playlists/<playlist_id>/refilter", methods=["POST"])
@@ -435,6 +441,45 @@ def refilter(access_token: str, playlist_id: str):
     def stream():
         import json as _json
         for event in refilter_playlist_stream(access_token, playlist_id, user_id):
+            try:
+                data = _json.loads(event.removeprefix("data: ").strip())
+            except Exception:
+                data = None
+
+            if data and data.get("kind") == "done":
+                result = data.get("result") or {}
+                slim   = {k: v for k, v in result.items() if k != "decisions"}
+                yield f"data: {_json.dumps({'kind': 'done', 'result': slim})}\n\n"
+            else:
+                yield event
+
+    return Response(
+        stream_with_context(stream()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@bp.route("/merge", methods=["POST"])
+@require_auth
+def merge(access_token: str):
+    """Importe ponctuellement tout le contenu d'une playlist quelconque dans
+    une playlist IA-XX existante — contrairement au sync, pas de notion de
+    "depuis la dernière fois", tout ce qui manque est évalué en une fois."""
+    body      = request.json or {}
+    from_id   = body.get("from_id", "").strip()
+    target_id = body.get("target_playlist_id", "").strip()
+
+    if not from_id:
+        return _err("Missing required parameter: from_id")
+    if not target_id:
+        return _err("Missing required parameter: target_playlist_id")
+
+    user_id = _current_user_id()
+
+    def stream():
+        import json as _json
+        for event in merge_playlist_stream(access_token, _parse_id(from_id), target_id, user_id):
             try:
                 data = _json.loads(event.removeprefix("data: ").strip())
             except Exception:

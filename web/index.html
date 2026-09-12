@@ -26,7 +26,7 @@
       <h1 class="splash-title">Muse<span>ster</span></h1>
       <p id="loading-text" class="splash-status">Connexion au serveur…</p>
     </div>
-    <p class="splash-version">4.5.5</p>
+    <p class="splash-version">4.6.0</p>
   </div>
 
   <!-- Login -->
@@ -81,11 +81,7 @@
               </label>
             </div>
 
-            <div class="field" id="field-sync-source">
-              <label>Playlist source</label>
-              <input type="text" id="sync-source-id" placeholder="Lien Spotify ou « liked »" oninput="clearError('field-sync-source')" />
-              <span class="field-error">Ce champ est requis</span>
-            </div>
+            <p class="muted-note">Chaque playlist se synchronise contre sa propre source enregistrée (modifiable depuis « Modifier le prompt »).</p>
 
             <div>
               <div class="sync-target-row">
@@ -111,6 +107,44 @@
             </div>
 
             <button class="btn btn-primary" id="btn-sync" onclick="sync()">Synchroniser</button>
+          </div>
+        </div>
+
+        <div class="accordion" id="merge-accordion">
+          <button class="accordion-head" onclick="toggleMergeAccordion()">
+            <span class="ah-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3v12"/><path d="M7 3v6a4 4 0 0 0 4 4h6"/><circle cx="17" cy="19" r="2"/><circle cx="7" cy="19" r="2"/><path d="M7 11v6"/></svg>
+            </span>
+            <span class="ah-copy">
+              <span>Fusionner</span>
+              <small>Ajouter le contenu d'une playlist dans une IA-</small>
+            </span>
+            <span class="chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+
+          <div class="accordion-body">
+            <div class="field" id="field-merge-from">
+              <label>Playlist à fusionner</label>
+              <input type="text" id="merge-from-id" placeholder="Lien Spotify ou « liked »" oninput="clearError('field-merge-from')" />
+              <span class="field-error">Ce champ est requis</span>
+            </div>
+
+            <div class="field" id="field-merge-target">
+              <label>Playlist IA- cible</label>
+              <div class="sync-playlist-items" id="merge-target-items"><span class="muted-note">Chargement…</span></div>
+              <span class="field-error">Choisis une playlist cible</span>
+            </div>
+
+            <div id="merge-loader" class="hidden progress-card">
+              <div class="progress-head">
+                <span></span>
+                <button class="btn-text" id="btn-merge-cancel" type="button" onclick="cancelMerge()">Annuler</button>
+              </div>
+              <div class="progress-wrap"><div class="progress-bar" id="merge-progress-bar"></div></div>
+              <div class="status-line" id="merge-status-line"></div>
+            </div>
+
+            <button class="btn btn-primary" id="btn-merge" onclick="mergePlaylists()">Fusionner</button>
           </div>
         </div>
 

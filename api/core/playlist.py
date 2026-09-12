@@ -11,7 +11,7 @@ from core.scoring import score_against_anchors, fetch_track_context, prompt_care
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PASS2
 from services.auth import (
-    save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source, save_sync,
+    save_playlist_prompt, get_playlist_prompt, get_playlist_anchors, get_playlist_source, save_sync, save_merge,
 )
 from services import jobs as _jobs
 
@@ -517,23 +517,23 @@ def generate_multi_playlist_stream(
 
 def sync_all_playlists_stream(
     access_token: str,
-    source_id: str,
     destructive: bool = True,
     target_ids: list | None = None,
 ) -> Generator[str, None, None]:
-
+    """Chaque playlist est synchronisée contre SA PROPRE source enregistrée
+    (jamais une source choisie au vol) — le calcul de "nouveaux morceaux
+    depuis le dernier sync" compare les dates d'ajout des morceaux CIBLE à
+    ceux de la source, ce qui n'a de sens que si c'est la même source depuis
+    le début. Pointer un sync vers une autre playlist a été tenté et a
+    silencieusement filtré tous les morceaux (leurs dates d'ajout, souvent
+    plus anciennes que le dernier ajout côté cible, ne passaient jamais le
+    test "> last_added"). Pour fusionner ponctuellement le contenu d'une
+    autre playlist, voir merge_playlist_stream — un import complet, sans
+    filtre par date. Pour changer durablement la source d'une playlist,
+    voir PUT /playlists/<id>/prompt (accepte un nouveau source_id)."""
     import config as _cfg
 
     spotify = SpotifyService(access_token)
-
-    yield _event("status", message="Récupération de la playlist source…")
-    try:
-        source_tracks = spotify.get_tracks(source_id, extended=True)
-    except Exception as e:
-        yield _event("error", message=source_error_message(source_id, e))
-        return
-    source_ids    = {t.id for t in source_tracks}
-    source_name   = spotify.get_playlist_name(source_id)
 
     yield _event("status", message="Récupération des playlists générées…")
     generated = spotify.get_user_generated_playlists()
@@ -552,19 +552,45 @@ def sync_all_playlists_stream(
     yield _event("progress", done=0, total=total)
 
     log_entries: list[dict] = []
+    # Plusieurs playlists IA- peuvent partager la même source — ne la
+    # retélécharger qu'une fois par source distincte rencontrée dans ce sync.
+    source_cache: dict[str, tuple[list, set, str]] = {}
 
     for i, playlist in enumerate(generated):
         pid  = playlist["id"]
         name = playlist["name"]
 
+        added     = 0
+        checked   = 0
+        to_remove = []
+
+        source_id = get_playlist_source(pid)
+        if not source_id:
+            results[pid] = {"name": name, "removed": 0, "added": 0, "checked": 0, "reason": "no source linked"}
+            yield _event("status", message=f"[{i+1}/{total}] {name} — aucune source enregistrée, ignorée")
+            yield _event("playlist_done", name=name, removed=0, added=0, checked=0)
+            yield _event("progress", done=i + 1, total=total)
+            continue
+
+        if source_id not in source_cache:
+            yield _event("status", message=f"[{i+1}/{total}] {name} — récupération de sa source…")
+            try:
+                s_tracks = spotify.get_tracks(source_id, extended=True)
+                s_name   = spotify.get_playlist_name(source_id)
+            except Exception:
+                results[pid] = {"name": name, "removed": 0, "added": 0, "checked": 0, "reason": "source introuvable"}
+                yield _event("status", message=f"[{i+1}/{total}] {name} — playlist source introuvable, ignorée")
+                yield _event("playlist_done", name=name, removed=0, added=0, checked=0)
+                yield _event("progress", done=i + 1, total=total)
+                continue
+            source_cache[source_id] = (s_tracks, {t.id for t in s_tracks}, s_name)
+
+        source_tracks, source_ids, source_name = source_cache[source_id]
+
         if destructive:
             yield _event("status", message=f"[{i+1}/{total}] {name} — suppression des morceaux retirés…")
         else:
             yield _event("status", message=f"[{i+1}/{total}] {name} — recherche des nouveaux morceaux…")
-
-        added     = 0
-        checked   = 0
-        to_remove = []
 
         # Une erreur sur une playlist (ex: supprimée de Spotify depuis) ne doit pas
         # faire mourir tout le flux — sinon aucun résultat n'est jamais persisté,
@@ -611,6 +637,21 @@ def sync_all_playlists_stream(
                         raw_anchors  = get_playlist_anchors(pid)
                         sync_anchors = [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
                                         for a in raw_anchors] or None
+
+                        # Pas de progress ici : le sync traite plusieurs playlists
+                        # d'affilée et son done/total suit "combien de playlists
+                        # terminées", pas les morceaux d'une étape interne — mélanger
+                        # les deux ferait sauter la barre de façon incohérente.
+                        context = {}
+                        yield _event("status", message=f"[{i+1}/{total}] {name} — analyse des morceaux (tags, paroles)…")
+                        for kind, *rest in fetch_track_context(new_tracks):
+                            if kind != "progress":
+                                context = rest[0]
+                        languages = (
+                            {tid: p["language"] for tid, p in context.items() if p.get("language")}
+                            if prompt_cares_about_language(prompt) else {}
+                        )
+
                         total_b = -(-len(new_tracks) // _cfg.BATCH_SIZE)
                         batches = [new_tracks[j:j+_cfg.BATCH_SIZE] for j in range(0, len(new_tracks), _cfg.BATCH_SIZE)]
 
@@ -620,7 +661,7 @@ def sync_all_playlists_stream(
                         sync_done = 0
                         model_sync = _model_for(total_b)
                         with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-                            futs = {ex.submit(_classifier._process_batch, prompt, b, j, total_b, None, sync_anchors, None, model_sync): j
+                            futs = {ex.submit(_classifier._process_batch, prompt, b, j, total_b, None, sync_anchors, languages, model_sync, context): j
                                     for j, b in enumerate(batches)}
                             for kind, fut in _wait_with_heartbeat(futs):
                                 if kind == "heartbeat":
@@ -653,13 +694,8 @@ def sync_all_playlists_stream(
                             spotify.add_to_playlist(pid, selected)
                             if not destructive:
                                 from datetime import datetime
-                                original_source = get_playlist_source(pid)
-                                date_str        = datetime.now().strftime("%d/%m/%Y")
-                                if original_source and original_source != source_id:
-                                    note = f"[Sync additif depuis \"{source_name}\" (source différente de l'originale) — {date_str}] "
-                                else:
-                                    note = f"[Sync additif depuis \"{source_name}\" — {date_str}] "
-                                spotify.prepend_playlist_description(pid, note)
+                                date_str = datetime.now().strftime("%d/%m/%Y")
+                                spotify.prepend_playlist_description(pid, f"[Sync additif depuis \"{source_name}\" — {date_str}] ")
                         added     = len(selected)
                         results[pid] = {
                             "name": name, "removed": len(to_remove), "added": added, "checked": checked,
@@ -678,6 +714,116 @@ def sync_all_playlists_stream(
     if log_entries:
         _write_decisions_log(log_entries)
     yield _event("done", results=results)
+
+
+# ---------------------------------------------------------------------------
+# Merge — importe ponctuellement TOUT le contenu d'une playlist quelconque
+# dans une playlist IA-XX existante, jugé contre son prompt/ses ancres.
+# Contrairement au sync (qui ne regarde que ce qui a été ajouté à LA source
+# depuis le dernier passage, par date), le merge n'a pas de notion de "depuis
+# la dernière fois" — il évalue tout ce qui n'est pas déjà présent, en une
+# fois. Toujours additif, ne retire jamais rien.
+# ---------------------------------------------------------------------------
+
+def merge_playlist_stream(
+    access_token: str,
+    from_id: str,
+    target_id: str,
+    user_id: str,
+) -> Generator[str, None, None]:
+    import config as _cfg
+
+    spotify = SpotifyService(access_token)
+
+    yield _event("status", message="Récupération des morceaux à fusionner…")
+    try:
+        from_tracks = spotify.get_tracks(from_id)
+    except Exception as e:
+        yield _event("error", message=source_error_message(from_id, e))
+        return
+    from_name = spotify.get_playlist_name(from_id)
+
+    target_name = spotify.get_playlist_name(target_id)
+    prompt = get_playlist_prompt(target_id)
+    if not prompt:
+        yield _event("error", message=f"Aucun prompt enregistré pour « {target_name} ».")
+        return
+
+    yield _event("status", message=f"« {target_name} » — récupération des morceaux actuels…")
+    try:
+        target_tracks = spotify.get_tracks(target_id)
+    except Exception as e:
+        yield _event("error", message=source_error_message(target_id, e))
+        return
+    existing_ids = {t.id for t in target_tracks}
+
+    candidates = [t for t in from_tracks if t.id not in existing_ids]
+    if not candidates:
+        yield _event("done", result={
+            "name": target_name, "from_name": from_name, "checked": 0, "added": 0, "decisions": [],
+        })
+        return
+
+    raw_anchors  = get_playlist_anchors(target_id)
+    anchor_track = [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
+                     for a in raw_anchors] or None
+
+    context = {}
+    yield _event("status", message="Analyse des morceaux (tags, paroles)…")
+    for kind, *rest in fetch_track_context(candidates):
+        if kind == "progress":
+            done, ctx_total = rest
+            yield _event("progress", done=done, total=ctx_total, phase="context")
+        else:
+            context = rest[0]
+    languages = (
+        {tid: p["language"] for tid, p in context.items() if p.get("language")}
+        if prompt_cares_about_language(prompt) else {}
+    )
+
+    batches = [candidates[i:i+_cfg.BATCH_SIZE] for i in range(0, len(candidates), _cfg.BATCH_SIZE)]
+    total_b = len(batches)
+    yield _event("status",   message=f"{len(candidates)} morceaux — {total_b} batch(s) en cours…")
+    yield _event("progress", done=0, total=total_b)
+
+    raw: dict[int, list] = {}
+    model_mg = _model_for(total_b)
+    with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
+        futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anchor_track, languages, model_mg, context): i
+                for i, b in enumerate(batches)}
+        done = 0
+        for kind, fut in _wait_with_heartbeat(futs):
+            if kind == "heartbeat":
+                yield _event("status", message=f"Toujours en cours… ({done}/{total_b} lots terminés)")
+                continue
+            raw[futs[fut]] = fut.result()
+            done += 1
+            yield _event("progress", done=done, total=total_b)
+
+    decisions: list[Decision] = []
+    for idx in sorted(raw):
+        for d in raw[idx]:
+            try:
+                decisions.append(Decision(**d))
+            except (TypeError, ValueError) as e:
+                logger.warning("Skipping malformed decision %s: %s", d, e)
+
+    selected = _filter(decisions)
+    if selected:
+        spotify.add_to_playlist(target_id, selected)
+        from datetime import datetime
+        date_str = datetime.now().strftime("%d/%m/%Y")
+        spotify.prepend_playlist_description(target_id, f"[Fusion depuis \"{from_name}\" — {date_str}] ")
+
+    track_map = {t.id: t for t in candidates}
+    result = {
+        "name": target_name, "from_name": from_name,
+        "checked": len(candidates), "added": len(selected),
+        "decisions": _decisions_payload(decisions, track_map),
+    }
+    _write_decisions_log([{"name": target_name, "prompt": prompt, "anchors": anchor_track or [], "decisions": decisions}])
+    save_merge(user_id, target_id, target_name, from_name, result)
+    yield _event("done", result=result)
 
 
 # ---------------------------------------------------------------------------

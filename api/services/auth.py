@@ -176,6 +176,30 @@ def save_sync(user_id: str, results: dict, execution_time: str):
             ))
 
 
+def save_merge(user_id: str, playlist_id: str, playlist_name: str, from_name: str, result: dict):
+    # Réutilise la colonne `prompt` (jamais renseignée pour un sync) pour
+    # garder le nom de la playlist fusionnée — pas besoin d'une colonne de
+    # plus pour une seule info d'affichage.
+    now = datetime.now().isoformat()
+    decisions_json = json.dumps(result['decisions']) if result.get('decisions') else None
+    with db_conn(HISTORY_PATH) as conn:
+        conn.execute(f"""
+            INSERT INTO history
+                (user_id, action, created_at, playlist_id, playlist_name, prompt,
+                 checked_songs, selected_songs, decisions)
+            VALUES ({PH}, 'merge', {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
+        """, (
+            user_id,
+            now,
+            playlist_id,
+            playlist_name,
+            from_name,
+            result.get('checked', 0),
+            result.get('added', 0),
+            decisions_json,
+        ))
+
+
 def get_history(user_id: str) -> list:
     with db_conn(HISTORY_PATH) as conn:
         rows = conn.execute(f"""

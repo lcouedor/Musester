@@ -766,9 +766,7 @@ function cancelSync() {
 }
 
 function sync() {
-  const sourceId    = document.getElementById('sync-source-id').value.trim()
   const destructive = document.getElementById('toggle-destructive').checked
-  if (!validateFields([{ fieldId: 'field-sync-source', value: sourceId }])) return
 
   if (_syncSelectedIds !== null && _syncSelectedIds.size === 0) {
     toast('Aucune playlist sélectionnée pour le sync', 'err')
@@ -789,7 +787,6 @@ function sync() {
   _syncSSE = runSSE({
     url:  `${API}/sync`,
     body: {
-      source_id:           sourceId,
       destructive,
       target_playlist_ids: _syncSelectedIds !== null ? Array.from(_syncSelectedIds) : null,
     },
@@ -816,6 +813,118 @@ function sync() {
       loader.classList.add('hidden')
       btn.disabled          = false
       btn.textContent       = 'Synchroniser'
+      toast(err, 'err')
+    },
+  })
+}
+
+// ── Merge ────────────────────────────────────────────────────────────────
+// Contrairement au sync (qui ne regarde que les nouveautés d'UNE source
+// fixe, comparées par date), le merge est un import ponctuel et complet du
+// contenu d'une playlist quelconque dans une playlist IA- existante — sans
+// notion de "depuis la dernière fois". Cible unique par design (le nom du
+// champ le dit : fusionner CE contenu DANS CETTE playlist).
+let _mergePlaylists = []
+let _mergeTargetId  = null
+let _mergeSSE       = null
+
+function toggleMergeAccordion() {
+  const acc     = document.getElementById('merge-accordion')
+  const wasOpen = acc.classList.contains('open')
+  acc.classList.toggle('open')
+  if (!wasOpen) ensureMergeTargets()
+}
+
+async function ensureMergeTargets() {
+  // Même cache partagé que le picker de sync — pas de fetch en double.
+  await ensureCachedPlaylists()
+  _mergePlaylists = _cachedPlaylists.map(p => ({ id: p.id, name: p.name }))
+  renderMergeTargets()
+}
+
+function renderMergeTargets() {
+  const container = document.getElementById('merge-target-items')
+  if (!_mergePlaylists.length) {
+    container.innerHTML = '<span class="muted-note">Aucune playlist IA- trouvée</span>'
+    return
+  }
+  container.innerHTML = ''
+  _mergePlaylists.forEach(p => {
+    const item = document.createElement('div')
+    item.className = 'sync-pl-item'
+    const rb = document.createElement('input')
+    rb.type    = 'radio'
+    rb.name    = 'merge-target'
+    rb.id      = `mt-${p.id}`
+    rb.checked = _mergeTargetId === p.id
+    rb.addEventListener('change', () => {
+      _mergeTargetId = p.id
+      clearError('field-merge-target')
+    })
+    const lbl = document.createElement('label')
+    lbl.htmlFor     = `mt-${p.id}`
+    lbl.textContent = p.name
+    item.append(rb, lbl)
+    item.addEventListener('click', e => { if (e.target !== rb) rb.click() })
+    container.appendChild(item)
+  })
+}
+
+function cancelMerge() {
+  if (!_mergeSSE) return
+  _mergeSSE.cancel()
+  _mergeSSE = null
+  document.getElementById('merge-loader').classList.add('hidden')
+  document.getElementById('merge-progress-bar').className = 'progress-bar'
+  const btn = document.getElementById('btn-merge')
+  btn.disabled    = false
+  btn.textContent = 'Fusionner'
+  toast('Fusion annulée', 'ok')
+}
+
+function mergePlaylists() {
+  const fromId = document.getElementById('merge-from-id').value.trim()
+  if (!validateFields([{ fieldId: 'field-merge-from', value: fromId }])) return
+  if (!_mergeTargetId) {
+    document.getElementById('field-merge-target').classList.add('error')
+    return
+  }
+
+  const btn        = document.getElementById('btn-merge')
+  const loader     = document.getElementById('merge-loader')
+  const progressEl = document.getElementById('merge-progress-bar')
+  const statusEl   = document.getElementById('merge-status-line')
+
+  btn.disabled          = true
+  btn.textContent       = 'En cours…'
+  loader.classList.remove('hidden')
+  progressEl.className  = 'progress-bar indeterminate'
+  statusEl.textContent  = 'Connexion…'
+
+  _mergeSSE = runSSE({
+    url:  `${API}/merge`,
+    body: { from_id: fromId, target_playlist_id: _mergeTargetId },
+    onStatus: msg => { statusEl.textContent = msg },
+    onProgress: (done, total) => {
+      progressEl.className   = 'progress-bar'
+      progressEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
+    },
+    onDone: data => {
+      _mergeSSE = null
+      loader.classList.add('hidden')
+      btn.disabled    = false
+      btn.textContent = 'Fusionner'
+      const r = data.result || {}
+      toast(r.added ? `Fusion terminée — +${r.added} morceau(x)` : 'Fusion terminée — rien à ajouter', 'ok')
+      loadPlaylists()
+      loadHistory()
+    },
+    onError: err => {
+      _mergeSSE = null
+      progressEl.className = 'progress-bar'
+      loader.classList.add('hidden')
+      btn.disabled          = false
+      btn.textContent       = 'Fusionner'
       toast(err, 'err')
     },
   })
@@ -898,6 +1007,11 @@ async function loadPlaylists() {
             <label>Nouveau prompt</label>
             <textarea rows="2" id="pi-input-${p.id}">${esc(p.prompt || '')}</textarea>
             <span class="field-error">Le prompt ne peut pas être vide</span>
+          </div>
+          <div class="field" id="pi-source-field-${p.id}">
+            <label>Playlist source</label>
+            <input type="text" id="pi-source-${p.id}" value="${esc(p.source_id || '')}" placeholder="Lien Spotify ou « liked »" />
+            <span class="field-error">Cette playlist source est introuvable</span>
           </div>
           <div class="btn-row">
             <button class="btn btn-primary btn-inline" data-action="save">Sauvegarder</button>
@@ -994,21 +1108,30 @@ function cancelRefilter(id) {
 function toggleEditPrompt(id) {
   document.getElementById(`pi-edit-${id}`).classList.toggle('open')
   document.getElementById(`pi-field-${id}`).classList.remove('error')
+  document.getElementById(`pi-source-field-${id}`)?.classList.remove('error')
 }
 
 async function savePrompt(id) {
-  const prompt = document.getElementById(`pi-input-${id}`).value.trim()
+  const prompt   = document.getElementById(`pi-input-${id}`).value.trim()
+  const sourceId = document.getElementById(`pi-source-${id}`).value.trim()
+  document.getElementById(`pi-source-field-${id}`).classList.remove('error')
   if (!prompt) { document.getElementById(`pi-field-${id}`).classList.add('error'); return }
   try {
-    const res = await fetch(`${API}/playlists/${id}/prompt`, {
+    const res  = await fetch(`${API}/playlists/${id}/prompt`, {
       method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, source_id: sourceId }),
     })
+    const data = await res.json().catch(() => null)
     if (res.ok) {
       document.getElementById(`pi-prompt-${id}`).textContent = prompt
       toggleEditPrompt(id)
       toast('Prompt mis à jour', 'ok')
-    } else { toast('Erreur lors de la mise à jour du prompt', 'err') }
+      loadPlaylists()
+    } else if (res.status === 404) {
+      document.getElementById(`pi-source-field-${id}`).classList.add('error')
+    } else {
+      toast(data?.error || 'Erreur lors de la mise à jour du prompt', 'err')
+    }
   } catch (e) { toast(e.message, 'err') }
 }
 
@@ -1068,11 +1191,16 @@ function renderHistory() {
   const items = _historyLimit === null ? visible : visible.slice(0, _historyLimit)
   container.innerHTML = ''
   items.forEach(h => {
-    const isGen  = h.action === 'generate'
-    const name   = h.playlist_name || h.playlist_id || '—'
-    const count  = isGen ? `${h.selected_songs}/${h.checked_songs}` : `+${h.selected_songs||0} / -${h.removed_songs||0}`
-    const detail = isGen ? (h.prompt || '') : `sync — ${h.checked_songs||0} vérifiés`
-    const title  = isGen ? `IA-${name}` : name
+    const isGen   = h.action === 'generate'
+    const isMerge = h.action === 'merge'
+    const name    = h.playlist_name || h.playlist_id || '—'
+    const count   = isGen ? `${h.selected_songs}/${h.checked_songs}`
+      : isMerge ? `+${h.selected_songs||0}`
+      : `+${h.selected_songs||0} / -${h.removed_songs||0}`
+    const detail  = isGen ? (h.prompt || '')
+      : isMerge ? `fusion depuis « ${h.prompt||'?'} » — ${h.checked_songs||0} vérifiés`
+      : `sync — ${h.checked_songs||0} vérifiés`
+    const title   = isGen ? `IA-${name}` : name
     const cover  = _cachedPlaylists.find(p => p.id === h.playlist_id)?.cover_url
 
     const el = document.createElement('div')

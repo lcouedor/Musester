@@ -328,7 +328,7 @@ button { cursor: pointer; }
   display: flex; align-items: center; gap: 9px; padding: 9px 11px;
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
 }
-.sync-pl-item input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
+.sync-pl-item input[type=checkbox], .sync-pl-item input[type=radio] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
 .sync-pl-item label { font-size: 13px; flex: 1; }
 
 /* ── Playlist tabs (pills) ─────────────────────────────────────────────── */
