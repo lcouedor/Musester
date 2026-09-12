@@ -44,6 +44,16 @@ def _resolve_anchors(anchors_raw: list[dict], track_map: dict) -> list[Track]:
 
 HEARTBEAT_SECONDS = 8
 
+# En dessous de ce score, un faux négatif (un morceau pertinent écarté à
+# tort) est jugé assez improbable pour justifier un rejet direct plutôt que
+# de payer GPT dessus — contrairement à la zone entre ce plancher et le
+# seuil normal, où le doute profite au morceau (voir plus bas). Mesuré sur
+# un cas réel (ancre Bring Me The Horizon, prompt metalcore) : seulement
+# ~7% des morceaux scorés tombent sous ce plancher, donc ça n'allège pas
+# énormément la passe GPT à soi seul — mais ce sont les cas les plus sûrs
+# à écarter sans y regarder à deux fois.
+HARD_REJECT_BELOW = 0.15
+
 def _wait_with_heartbeat(futs: dict, heartbeat_every: float = HEARTBEAT_SECONDS):
     """Comme as_completed(futs), mais émet aussi ('heartbeat', None) toutes
     les `heartbeat_every` secondes tant qu'aucun lot n'a terminé. Un lot GPT
@@ -128,11 +138,28 @@ def generate_playlist_stream(
                     scoring = rest[0]
             embedding_approved = [t for t in tracks if scoring.passes(t.id)]
             approved_ids = {a.id for a in embedding_approved}
-            pass1_pool = [t for t in tracks if t.id not in approved_ids]
+
+            hard_rejected: list[Track] = []
+            pass1_pool = []
+            for t in tracks:
+                if t.id in approved_ids:
+                    continue
+                score = scoring.scores.get(t.id)
+                if score is not None and score < HARD_REJECT_BELOW:
+                    hard_rejected.append(t)
+                else:
+                    pass1_pool.append(t)
+
+            for t in hard_rejected:
+                score = scoring.scores.get(t.id)
+                decisions.append(Decision(
+                    id=t.id, title=t.title, include=False,
+                    reason=f"[similarité] {score:.2f} — trop éloigné des ancres, aucun doute raisonnable",
+                ))
 
             yield _event("status", message=(
                 f"{len(embedding_approved)}/{len(tracks)} candidats retenus directement par similarité "
-                f"({len(pass1_pool)} évalués par GPT)"
+                f"({len(hard_rejected)} exclus directement, {len(pass1_pool)} évalués par GPT)"
             ))
         except Exception as e:
             logger.warning("Embedding scoring failed, falling back to full GPT pass: %s", e)

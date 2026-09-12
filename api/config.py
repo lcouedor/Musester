@@ -32,8 +32,14 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 LASTFM_API_KEY = os.getenv('LASTFM_API_KEY')
 
 # Behaviour
-BATCH_SIZE      = 60
-MAX_WORKERS     = 3
+BATCH_SIZE  = 60
+# Mesuré en direct sur ce compte : 500 requêtes/min, 200k tokens/min pour
+# gpt-4.1-mini — un lot de 60 morceaux tourne autour de 3-5k tokens et ~20s.
+# À 3 workers, une grosse bibliothèque sans ancres (donc sans pré-filtre —
+# tout part en GPT) attend l'essentiel de son temps sur de la concurrence
+# inutilement bridée alors que le compte a une marge énorme (10 workers en
+# continu reste largement sous les deux plafonds, avec de la marge).
+MAX_WORKERS     = 10
 PLAYLIST_PREFIX = "IA-"
 
 # Server
