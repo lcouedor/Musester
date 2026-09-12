@@ -23,8 +23,22 @@ SPOTIFY_USERNAME = os.getenv('SPOTIFY_USERNAME')
 SPOTIFY_SCOPE    = "playlist-read-private playlist-modify-private playlist-modify-public user-library-read"
 
 # OpenAI
-GPT_KEY         = os.getenv('GPT_KEY')
-GPT_MODEL       = "gpt-4.1-mini"
+GPT_KEY = os.getenv('GPT_KEY')
+
+# Deux modèles, pas un : mesuré en direct sur ce compte, gpt-4.1 classe un lot
+# ~2x plus vite que gpt-4.1-mini (~12.5s vs ~25s), mais son rate limit est
+# ~7x plus serré (30k tokens/min contre 200k) — à l'échelle d'une grosse
+# bibliothèque sans ancres (20+ lots), ça fait échouer des lots entiers après
+# épuisement des 5 tentatives (constaté : lots revenus vides, donc des
+# morceaux silencieusement jamais évalués), et même sans échec, le concède
+# à une concurrence si réduite pour rester sous la limite que le total est
+# plus lent qu'avec le mini. gpt-4.1 ne vaut le coup QUE pour un petit nombre
+# de lots (peu de candidats à évaluer, typiquement une génération avec
+# ancres) — au-delà de SMALL_JOB_BATCH_THRESHOLD, le mini reste le choix sûr.
+GPT_MODEL               = "gpt-4.1-mini"
+GPT_MODEL_FAST          = "gpt-4.1"
+SMALL_JOB_BATCH_THRESHOLD = 10
+
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 # Last.fm (tags — signal indépendant de ce que GPT "connaît" d'un morceau).

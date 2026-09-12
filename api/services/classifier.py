@@ -165,10 +165,12 @@ class ClassifierService:
 
     def generate_description(self, prompt: str) -> str:
         """Description Spotify courte écrite à la génération — pour que la
-        playlist se comprenne d'elle-même même consultée hors de Musester."""
+        playlist se comprenne d'elle-même même consultée hors de Musester.
+        Un seul appel léger, jamais en boucle — toujours le modèle rapide,
+        aucun risque de rate limit à ce volume."""
         try:
             response = self._client.chat.completions.create(
-                model=config.GPT_MODEL,
+                model=config.GPT_MODEL_FAST,
                 messages=[
                     {"role": "system", "content": (
                         "Rewrite this playlist request into a short, natural playlist description "
@@ -191,6 +193,7 @@ class ClassifierService:
         preprompt: str = None,
         anchors: list[Track] = None,
         languages: dict[str, str] = None,
+        model: str = None,
     ) -> list[dict]:
         # temperature=0 + seed fixe : sans ça, la même playlist régénérée avec
         # exactement le même prompt peut ressortir avec des morceaux différents
@@ -198,6 +201,8 @@ class ClassifierService:
         # promet qu'en best-effort), mais nettement plus stable qu'en défaut.
         if preprompt is None:
             preprompt = PREPROMPT
+        if model is None:
+            model = config.GPT_MODEL
 
         if anchors:
             anchor_ids = {a.id for a in anchors}
@@ -229,7 +234,7 @@ class ClassifierService:
         for attempt in range(5):
             try:
                 response = self._client.chat.completions.create(
-                    model=config.GPT_MODEL,
+                    model=model,
                     messages=[
                         {"role": "system", "content": preprompt},
                         {"role": "user",   "content": prompt},
@@ -258,11 +263,14 @@ class ClassifierService:
         batch: list[Track],
         idx: int,
         total: int,
+        model: str = None,
     ) -> dict[int, list[dict]]:
         """
         playlists_spec: [{'idx': int, 'prompt': str, 'anchors': list[Track]}]
         Returns: {playlist_idx: [decision_dicts]}
         """
+        if model is None:
+            model = config.GPT_MODEL
         all_anchor_ids = {a.id for p in playlists_spec for a in (p.get("anchors") or [])}
         sorted_batch   = sorted(batch, key=lambda t: 0 if t.id in all_anchor_ids else 1)
 
@@ -288,7 +296,7 @@ class ClassifierService:
         for attempt in range(5):
             try:
                 response = self._client.chat.completions.create(
-                    model=config.GPT_MODEL,
+                    model=model,
                     messages=[
                         {"role": "system", "content": PREPROMPT_MULTI},
                         {"role": "user",   "content": prompt},

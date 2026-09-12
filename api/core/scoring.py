@@ -17,10 +17,11 @@ def translate_to_english(text: str) -> str:
     """Les tags Last.fm sont quasi toujours en anglais — sans ça, la similarité
     d'embedding capte autant "même langue" que "même sens" (mesuré : un prompt
     FR matchait mieux avec une chanson française hors-sujet qu'avec un morceau
-    ambient pourtant pertinent, une fois traduit l'écart redevient net)."""
+    ambient pourtant pertinent, une fois traduit l'écart redevient net).
+    Un seul appel léger, jamais en boucle — toujours le modèle rapide."""
     try:
         resp = _client.chat.completions.create(
-            model=config.GPT_MODEL,
+            model=config.GPT_MODEL_FAST,
             messages=[
                 {"role": "system", "content": "Translate the following music listening-context description to English. Reply with ONLY the translation, no extra text."},
                 {"role": "user", "content": text},

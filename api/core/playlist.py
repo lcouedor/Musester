@@ -79,6 +79,21 @@ def _wait_with_heartbeat(futs: dict, job_id: str = None, heartbeat_every: float 
             yield ("done", fut)
 
 
+def _model_for(total_batches: int) -> str:
+    """gpt-4.1 classe un lot ~2x plus vite que gpt-4.1-mini (mesuré : ~12.5s
+    contre ~25s), mais son rate limit sur ce compte est ~7x plus serré (30k
+    tokens/min contre 200k). Au-delà d'un petit nombre de lots, cette
+    concurrence bridée le rend plus LENT globalement que le mini malgré sa
+    vitesse par appel — et en pire cas, des lots entiers échouent après
+    épuisement des tentatives (constaté : lots revenus vides, donc des
+    morceaux jamais évalués, pas juste un ralentissement). gpt-4.1 ne vaut
+    le coup que pour peu de lots (ex. génération avec ancres, où la plupart
+    des morceaux sautent déjà GPT) — au-delà du seuil, le mini est le choix
+    sûr, quelle que soit la vitesse par appel."""
+    import config as _cfg
+    return _cfg.GPT_MODEL_FAST if total_batches <= _cfg.SMALL_JOB_BATCH_THRESHOLD else _cfg.GPT_MODEL
+
+
 def _decisions_payload(decisions: list[Decision], track_map: dict) -> list[dict]:
     out = []
     for d in decisions:
@@ -183,8 +198,9 @@ def generate_playlist_stream(
             yield _event("progress", done=0, total=total_p1, phase=1)
 
             raw_p1: dict[int, list] = {}
+            model_p1 = _model_for(total_p1)
             with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1): i
+                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p1, PREPROMPT_PASS1, None, None, model_p1): i
                         for i, b in enumerate(pass1_batches)}
                 done = 0
                 for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -223,8 +239,9 @@ def generate_playlist_stream(
 
             raw_p2: dict[int, list] = {}
             anch = anchor_tracks or None
+            model_p2 = _model_for(total_p2)
             with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anch, languages): i
+                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anch, languages, model_p2): i
                         for i, b in enumerate(pass2_batches)}
                 done = 0
                 for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -262,8 +279,9 @@ def generate_playlist_stream(
 
         anch    = anchor_tracks or None
         raw_sp: dict[int, list] = {}
+        model_sp = _model_for(total_b)
         with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-            futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anch, languages): i
+            futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anch, languages, model_sp): i
                     for i, b in enumerate(batches)}
             done = 0
             for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -354,8 +372,9 @@ def generate_multi_playlist_stream(
         yield _event("progress", done=0, total=total_p1, phase=1)
 
         raw_p1: dict[int, list] = {}
+        model_p1 = _model_for(total_p1)
         with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-            futs = {ex.submit(_classifier._process_batch, combined_prompt, b, i, total_p1, PREPROMPT_PASS1): i
+            futs = {ex.submit(_classifier._process_batch, combined_prompt, b, i, total_p1, PREPROMPT_PASS1, None, None, model_p1): i
                     for i, b in enumerate(pass1_batches)}
             done = 0
             for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -398,8 +417,9 @@ def generate_multi_playlist_stream(
     yield _event("progress", done=0, total=total_b, **({} if phase is None else {"phase": phase}))
 
     raw_by_idx: dict[int, dict] = {}
+    model_final = _model_for(total_b)
     with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-        futs = {ex.submit(_classifier._process_batch_multi, playlists_spec, b, i, total_b): i
+        futs = {ex.submit(_classifier._process_batch_multi, playlists_spec, b, i, total_b, model_final): i
                 for i, b in enumerate(batches)}
         done = 0
         for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -562,8 +582,9 @@ def sync_all_playlists_stream(
 
                         raw_sync: dict[int, list] = {}
                         sync_done = 0
+                        model_sync = _model_for(total_b)
                         with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-                            futs = {ex.submit(_classifier._process_batch, prompt, b, j, total_b, None, sync_anchors): j
+                            futs = {ex.submit(_classifier._process_batch, prompt, b, j, total_b, None, sync_anchors, None, model_sync): j
                                     for j, b in enumerate(batches)}
                             for kind, fut in _wait_with_heartbeat(futs):
                                 if kind == "heartbeat":
@@ -672,8 +693,9 @@ def refilter_playlist_stream(
 
     start   = _time.time()
     raw: dict[int, list] = {}
+    model_rf = _model_for(total_b)
     with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-        futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anchor_track, languages): i
+        futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anchor_track, languages, model_rf): i
                 for i, b in enumerate(batches)}
         done = 0
         for kind, fut in _wait_with_heartbeat(futs):

@@ -7,6 +7,7 @@ from flask_cors import CORS
 
 from routes import bp
 from services.auth import init_db
+from services.jobs import init_jobs_table
 import config
 
 logging.basicConfig(
@@ -45,6 +46,7 @@ def create_app() -> Flask:
     CORS(app, origins=[config.FRONTEND_URL], allow_headers=["Content-Type", "Authorization"])
     app.register_blueprint(bp)
     init_db()
+    init_jobs_table()
 
     @app.route('/')
     def index():
