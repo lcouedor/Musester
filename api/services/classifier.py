@@ -164,6 +164,26 @@ def _multi_decisions_schema(playlist_indices: list[int]) -> dict:
     }
 
 
+# Extrait plus court que celui stocké en cache (400 caractères — pensé pour
+# la qualité de l'embedding dans core/scoring.py) : ici, il s'ajoute à CHAQUE
+# morceau de CHAQUE lot envoyé à GPT, donc son coût en tokens se multiplie par
+# la taille du lot — assez pour ancrer le jugement sur du réel, pas besoin de
+# plus pour ça.
+_LYRICS_PROMPT_EXCERPT_LEN = 150
+
+
+def _context_suffix(track_context: dict, track_id: str) -> str:
+    ctx = (track_context or {}).get(track_id)
+    if not ctx:
+        return ""
+    parts = []
+    if ctx.get("tags"):
+        parts.append(f"Tags: {', '.join(ctx['tags'])}")
+    if ctx.get("lyrics"):
+        parts.append(f"Lyrics excerpt: {ctx['lyrics'][:_LYRICS_PROMPT_EXCERPT_LEN].strip()}")
+    return f", {'; '.join(parts)}" if parts else ""
+
+
 class ClassifierService:
     _instance = None
 
@@ -210,6 +230,7 @@ class ClassifierService:
         anchors: list[Track] = None,
         languages: dict[str, str] = None,
         model: str = None,
+        track_context: dict = None,
     ) -> list[dict]:
         # temperature=0 + seed fixe : sans ça, la même playlist régénérée avec
         # exactement le même prompt peut ressortir avec des morceaux différents
@@ -240,10 +261,18 @@ class ClassifierService:
                 "nationality) — trust it over any assumption.\n"
             )
 
+        if track_context:
+            prompt += (
+                "\nSome songs include Last.fm tags and/or a lyrics excerpt — real external data, use it "
+                "instead of guessing from the title/artist alone whenever you're not confident you actually "
+                "know the song.\n"
+            )
+
         prompt += "\nSongs to evaluate:\n"
         prompt += "\n".join(
             f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
             + (f", Detected sung language: {languages[t.id]}" if languages and languages.get(t.id) else "")
+            + _context_suffix(track_context, t.id)
             for t in batch
         )
 
@@ -280,6 +309,7 @@ class ClassifierService:
         idx: int,
         total: int,
         model: str = None,
+        track_context: dict = None,
     ) -> dict[int, list[dict]]:
         """
         playlists_spec: [{'idx': int, 'prompt': str, 'anchors': list[Track]}]
@@ -300,9 +330,17 @@ class ClassifierService:
                     f"\n    Ask for each candidate: would it feel natural alongside these tracks?"
                 )
 
+        if track_context:
+            prompt += (
+                "\n\nSome songs include Last.fm tags and/or a lyrics excerpt — real external data, use it "
+                "instead of guessing from the title/artist alone whenever you're not confident you actually "
+                "know the song."
+            )
+
         prompt += "\n\nSongs to evaluate:\n"
         prompt += "\n".join(
             f"- ID: {t.id}, Title: {t.title}, Artist(s): {t.artists}, Album: {t.album}"
+            + _context_suffix(track_context, t.id)
             for t in sorted_batch
         )
 

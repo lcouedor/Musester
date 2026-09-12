@@ -7,7 +7,7 @@ from typing import Generator
 from spotipy.exceptions import SpotifyException
 
 from core.models import Track, Decision
-from core.scoring import score_against_anchors, fetch_languages, prompt_cares_about_language
+from core.scoring import score_against_anchors, fetch_track_context, prompt_cares_about_language
 from services.spotify import SpotifyService
 from services.classifier import ClassifierService, PREPROMPT_PASS1, PREPROMPT_PASS2
 from services.auth import (
@@ -212,18 +212,21 @@ def generate_playlist_stream(
 
         # --- Pass 2 : selective filter ---
         if candidates:
-            languages = {}
-            if prompt_cares_about_language(prompt):
-                yield _event("status", message="Détection de la langue chantée…")
-                for kind, *rest in fetch_languages(candidates, job_id=job_id):
-                    if kind == "progress":
-                        done, total = rest
-                        yield _event("progress", done=done, total=total, phase="lang")
-                    elif kind == "cancelled":
-                        yield _event("error", message="Génération annulée")
-                        return
-                    else:
-                        languages = rest[0]
+            context = {}
+            yield _event("status", message="Analyse des morceaux (tags, paroles)…")
+            for kind, *rest in fetch_track_context(candidates, job_id=job_id):
+                if kind == "progress":
+                    done, total = rest
+                    yield _event("progress", done=done, total=total, phase="context")
+                elif kind == "cancelled":
+                    yield _event("error", message="Génération annulée")
+                    return
+                else:
+                    context = rest[0]
+            languages = (
+                {tid: p["language"] for tid, p in context.items() if p.get("language")}
+                if prompt_cares_about_language(prompt) else {}
+            )
 
             pass2_batches = [candidates[i:i+_cfg.BATCH_SIZE] for i in range(0, len(candidates), _cfg.BATCH_SIZE)]
             total_p2      = len(pass2_batches)
@@ -235,7 +238,7 @@ def generate_playlist_stream(
             anch = anchor_tracks or None
             model_p2 = _model_for(total_p2)
             with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anch, languages, model_p2): i
+                futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_p2, PREPROMPT_PASS2, anch, languages, model_p2, context): i
                         for i, b in enumerate(pass2_batches)}
                 done = 0
                 for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -262,18 +265,21 @@ def generate_playlist_stream(
         # --- Single pass (pré-filtré par similarité si des ancres sont fournies) ---
         working = embedding_approved + pass1_pool if anchor_tracks else tracks
 
-        languages = {}
-        if prompt_cares_about_language(prompt):
-            yield _event("status", message="Détection de la langue chantée…")
-            for kind, *rest in fetch_languages(working, job_id=job_id):
-                if kind == "progress":
-                    done, total = rest
-                    yield _event("progress", done=done, total=total, phase="lang")
-                elif kind == "cancelled":
-                    yield _event("error", message="Génération annulée")
-                    return
-                else:
-                    languages = rest[0]
+        context = {}
+        yield _event("status", message="Analyse des morceaux (tags, paroles)…")
+        for kind, *rest in fetch_track_context(working, job_id=job_id):
+            if kind == "progress":
+                done, total = rest
+                yield _event("progress", done=done, total=total, phase="context")
+            elif kind == "cancelled":
+                yield _event("error", message="Génération annulée")
+                return
+            else:
+                context = rest[0]
+        languages = (
+            {tid: p["language"] for tid, p in context.items() if p.get("language")}
+            if prompt_cares_about_language(prompt) else {}
+        )
 
         batches = [working[i:i+_cfg.BATCH_SIZE] for i in range(0, len(working), _cfg.BATCH_SIZE)]
         total_b = len(batches)
@@ -285,7 +291,7 @@ def generate_playlist_stream(
         raw_sp: dict[int, list] = {}
         model_sp = _model_for(total_b)
         with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-            futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anch, languages, model_sp): i
+            futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anch, languages, model_sp, context): i
                     for i, b in enumerate(batches)}
             done = 0
             for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -426,6 +432,18 @@ def generate_multi_playlist_stream(
     else:
         eval_tracks = tracks
 
+    context = {}
+    yield _event("status", message="Analyse des morceaux (tags, paroles)…")
+    for kind, *rest in fetch_track_context(eval_tracks, job_id=job_id):
+        if kind == "progress":
+            done, total = rest
+            yield _event("progress", done=done, total=total, phase="context")
+        elif kind == "cancelled":
+            yield _event("error", message="Génération annulée")
+            return
+        else:
+            context = rest[0]
+
     # --- Passe finale : évaluation multi-playlist complète ---
     batches = [eval_tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(eval_tracks), _cfg.BATCH_SIZE)]
     total_b = len(batches)
@@ -437,7 +455,7 @@ def generate_multi_playlist_stream(
     raw_by_idx: dict[int, dict] = {}
     model_final = _model_for(total_b)
     with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-        futs = {ex.submit(_classifier._process_batch_multi, playlists_spec, b, i, total_b, model_final): i
+        futs = {ex.submit(_classifier._process_batch_multi, playlists_spec, b, i, total_b, model_final, context): i
                 for i, b in enumerate(batches)}
         done = 0
         for kind, fut in _wait_with_heartbeat(futs, job_id=job_id):
@@ -701,15 +719,18 @@ def refilter_playlist_stream(
     anchor_track = [Track(id=a["id"], title=a["title"], artists=a["artists"], album="")
                      for a in raw_anchors] or None
 
-    languages = {}
-    if prompt_cares_about_language(prompt):
-        yield _event("status", message="Détection de la langue chantée…")
-        for kind, *rest in fetch_languages(tracks):
-            if kind == "progress":
-                done, total = rest
-                yield _event("progress", done=done, total=total, phase="lang")
-            else:
-                languages = rest[0]
+    context = {}
+    yield _event("status", message="Analyse des morceaux (tags, paroles)…")
+    for kind, *rest in fetch_track_context(tracks):
+        if kind == "progress":
+            done, total = rest
+            yield _event("progress", done=done, total=total, phase="context")
+        else:
+            context = rest[0]
+    languages = (
+        {tid: p["language"] for tid, p in context.items() if p.get("language")}
+        if prompt_cares_about_language(prompt) else {}
+    )
 
     batches = [tracks[i:i+_cfg.BATCH_SIZE] for i in range(0, len(tracks), _cfg.BATCH_SIZE)]
     total_b = len(batches)
@@ -720,7 +741,7 @@ def refilter_playlist_stream(
     raw: dict[int, list] = {}
     model_rf = _model_for(total_b)
     with ThreadPoolExecutor(max_workers=_cfg.MAX_WORKERS) as ex:
-        futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anchor_track, languages, model_rf): i
+        futs = {ex.submit(_classifier._process_batch, prompt, b, i, total_b, None, anchor_track, languages, model_rf, context): i
                 for i, b in enumerate(batches)}
         done = 0
         for kind, fut in _wait_with_heartbeat(futs):

@@ -637,7 +637,7 @@ function generate() {
       progressEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
       if (phase === 1) phaseEl.textContent = 'Passe 1 — filtrage large'
       else if (phase === 2) phaseEl.textContent = 'Passe 2 — sélection fine'
-      else if (phase === 'lang') phaseEl.textContent = `Détection de la langue chantée — ${done}/${total}`
+      else if (phase === 'context') phaseEl.textContent = `Analyse des morceaux — ${done}/${total}`
       else phaseEl.textContent = ''
     },
 
@@ -961,9 +961,9 @@ async function refilterPlaylist(id, name) {
         barEl.className   = 'progress-bar'
         barEl.style.width = total > 0 ? Math.round((done / total) * 100) + '%' : '0%'
       }
-      if (phase === 'lang') {
+      if (phase === 'context') {
         const statusEl = document.getElementById(`pi-status-${id}`)
-        if (statusEl) statusEl.textContent = `Détection de la langue chantée — ${done}/${total}`
+        if (statusEl) statusEl.textContent = `Analyse des morceaux — ${done}/${total}`
       }
     },
     onDone: data => {

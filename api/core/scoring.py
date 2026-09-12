@@ -79,26 +79,30 @@ def prompt_cares_about_language(prompt: str) -> bool:
         return True
 
 
-def fetch_languages(tracks: list[Track], job_id: str = None):
-    """Générateur : yield ('progress', done, total) pendant la détection,
-    puis yield ('result', dict) une fois terminé, ou ('cancelled', None) si
-    `job_id` est annulé en cours de route — même traitement que
-    score_against_anchors, pour que l'UI affiche une vraie progression plutôt
-    qu'un statut figé pendant potentiellement plusieurs minutes, et que le
-    cancel prenne effet tout de suite plutôt qu'à la toute fin de l'étape.
+def fetch_track_context(tracks: list[Track], job_id: str = None):
+    """Générateur : yield ('progress', done, total) pendant la collecte, puis
+    yield ('result', dict) une fois terminé, ou ('cancelled', None) si
+    `job_id` est annulé en cours de route.
 
-    Langue réellement chantée (détectée depuis les paroles), par morceau — un
-    fait pour GPT plutôt qu'une supposition depuis la nationalité de
-    l'artiste (bug constaté : un artiste polonais chantant en anglais classé
-    comme "polonais"). Absent du dict si paroles introuvables/indétectables."""
-    def _one(track: Track) -> tuple[str, str | None]:
+    dict retourné : track_id -> {'tags': list[str], 'lyrics': str|None,
+    'language': str|None} — les tags Last.fm, un extrait de paroles et la
+    langue réellement chantée (détectée depuis les paroles, pas supposée
+    depuis la nationalité de l'artiste — bug constaté : un artiste polonais
+    chantant en anglais classé comme "polonais"). Cette donnée sert à ancrer
+    la décision finale de GPT sur des faits externes plutôt que sur son seul
+    souvenir (souvent flou) du morceau depuis son titre/artiste seuls — sans
+    ça, un morceau qu'il ne connaît pas vraiment reçoit un verdict à l'air
+    argumenté mais proche du hasard, instable d'un run à l'autre.
+
+    Passe par le cache partagé (track_cache) — un morceau déjà vu par
+    n'importe quel utilisateur ne redéclenche plus ces appels réseau."""
+    def _one(track: Track) -> tuple[str, dict]:
         primary_artist = track.artists.split('-')[0].strip()
-        profile = track_cache.get_profile(primary_artist, track.title)
-        return track.id, profile["language"]
+        return track.id, track_cache.get_profile(primary_artist, track.title)
 
     total = len(tracks)
     done  = 0
-    languages: dict[str, str] = {}
+    context: dict[str, dict] = {}
     with ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(_one, t): t for t in tracks}
         for kind, fut in _jobs.wait_with_heartbeat(futs, job_id=job_id):
@@ -108,12 +112,12 @@ def fetch_languages(tracks: list[Track], job_id: str = None):
             if kind == "cancelled":
                 yield ("cancelled", None)
                 return
-            tid, lang = fut.result()
-            if lang:
-                languages[tid] = lang
+            tid, profile = fut.result()
+            if profile["tags"] or profile["lyrics"] or profile["language"]:
+                context[tid] = profile
             done += 1
             yield ("progress", done, total)
-    yield ("result", languages)
+    yield ("result", context)
 
 
 class ScoringResult:
